@@ -7,11 +7,11 @@ import { computeNextRun } from '@/lib/tasks'
 const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
 const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
 
-async function runViaOpenClaw(message: string): Promise<string> {
+async function runViaOpenClaw(message: string, agentId = 'vino'): Promise<string> {
   const res = await fetch(`${GATEWAY}/api/agent/message`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agentId: 'vino', message, sessionId: 'task-runner' }),
+    body: JSON.stringify({ agentId, message, sessionId: 'task-runner' }),
     signal: AbortSignal.timeout(60000),
   })
   if (!res.ok) throw new Error(`OpenClaw ${res.status}`)
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   try {
     const result = task.task_type === 'nlp-sync'
       ? await runNlpSync()
-      : await runViaOpenClaw(task.message as string)
+      : await runViaOpenClaw(task.message as string, task.agent_id as string)
 
     const completedAt = new Date().toISOString()
     await sql`UPDATE agent_task_runs SET status = 'completed', result = ${result}, completed_at = ${completedAt} WHERE id = ${runId}`
