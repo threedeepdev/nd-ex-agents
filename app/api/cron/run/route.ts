@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { neon } from '@neondatabase/serverless'
-import { computeNextRun } from '../../tasks/route'
+import { computeNextRun } from '@/lib/tasks'
 
 const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
 const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!

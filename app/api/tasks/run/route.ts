@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { neon } from '@neondatabase/serverless'
-import { computeNextRun } from '../route'
+import { computeNextRun } from '@/lib/tasks'
 
 const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
 const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
