@@ -21,8 +21,7 @@ async function scrapeTicketWeb(): Promise<ScrapedShow[]> {
   const shows: ScrapedShow[] = []
 
   // Parse event cards — TicketWeb embeds JSON-LD or structured event data
-  const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)
-  for (const match of jsonLdMatches) {
+  for (const match of Array.from(html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))) {
     try {
       const data = JSON.parse(match[1])
       const events = Array.isArray(data) ? data : data['@type'] === 'Event' ? [data] : []
@@ -41,8 +40,8 @@ async function scrapeTicketWeb(): Promise<ScrapedShow[]> {
   if (shows.length === 0) {
     const datePattern = /(\w+ \d{1,2},? \d{4})/g
     const titlePattern = /class="[^"]*event[^"]*title[^"]*"[^>]*>([^<]+)</gi
-    const titles = [...html.matchAll(titlePattern)].map(m => m[1].trim())
-    const dates = [...html.matchAll(datePattern)].map(m => m[1])
+    const titles = Array.from(html.matchAll(titlePattern)).map(m => m[1].trim())
+    const dates = Array.from(html.matchAll(datePattern)).map(m => m[1])
     for (let i = 0; i < Math.min(titles.length, dates.length); i++) {
       const d = new Date(dates[i])
       if (!isNaN(d.getTime())) {
@@ -63,8 +62,7 @@ async function scrapeEventbrite(): Promise<ScrapedShow[]> {
   const html = await res.text()
   const shows: ScrapedShow[] = []
 
-  const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)
-  for (const match of jsonLdMatches) {
+  for (const match of Array.from(html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))) {
     try {
       const data = JSON.parse(match[1])
       const events = Array.isArray(data) ? data : [data]
