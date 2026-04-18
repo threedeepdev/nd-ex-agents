@@ -73,16 +73,16 @@ export async function GET(req: NextRequest) {
 
   const sql = neon(process.env.DATABASE_URL!)
   const rows = await sql`
-    SELECT show_date, artist_name, genre FROM nlp_shows
+    SELECT show_date, artist_name, genre, description FROM nlp_shows
     WHERE show_date >= ${weekStartStr} AND show_date <= ${weekEndStr}
     ORDER BY show_date, artist_name
   `
 
-  type ShowEntry = { artists: string[]; genre?: string }
+  type ShowEntry = { artists: string[]; genre?: string; description?: string }
   const byDate: Record<string, ShowEntry> = {}
   for (const r of rows) {
     const date = r.show_date as string
-    if (!byDate[date]) byDate[date] = { artists: [], genre: r.genre as string | undefined }
+    if (!byDate[date]) byDate[date] = { artists: [], genre: r.genre as string | undefined, description: r.description as string | undefined }
     byDate[date].artists.push(r.artist_name as string)
   }
 
@@ -189,13 +189,18 @@ export async function GET(req: NextRequest) {
                   <div style={{ fontSize: nameSize, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em', lineHeight: 1.1, display: 'flex' }}>
                     {artistLine}
                   </div>
-                  {show.genre && (
-                    <div style={{ display: 'flex', marginTop: 8 }}>
-                      <div style={{ fontSize: 10, color: color, letterSpacing: '0.22em', padding: '3px 10px', border: `1px solid ${color}`, borderRadius: 2, display: 'flex' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 8, gap: 0 }}>
+                    {show.genre && (
+                      <div style={{ fontSize: 10, color: color, letterSpacing: '0.22em', padding: '3px 10px', border: `1px solid ${color}`, borderRadius: 2, display: 'flex', marginRight: 12 }}>
                         {show.genre.toUpperCase()}
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {show.description && rowH > 120 && (
+                      <div style={{ fontSize: 11, color: '#777', display: 'flex', overflow: 'hidden' }}>
+                        {show.description.slice(0, 80)}{show.description.length > 80 ? '…' : ''}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Artist photo */}
