@@ -20,6 +20,7 @@ async function ensureTable() {
       created_at   TEXT NOT NULL
     )
   `
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS nlp_shows_date_artist ON nlp_shows(show_date, artist_name)`
 }
 
 export async function GET(req: NextRequest) {
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
   await sql`
     INSERT INTO nlp_shows (id, show_date, artist_name, genre, description, ticket_price, created_at)
     VALUES (${id}, ${body.showDate}, ${body.artistName}, ${body.genre ?? null}, ${body.description ?? null}, ${body.ticketPrice ?? null}, ${createdAt})
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (show_date, artist_name) DO NOTHING
   `
 
   return NextResponse.json({ id, showDate: body.showDate, artistName: body.artistName, genre: body.genre, createdAt })

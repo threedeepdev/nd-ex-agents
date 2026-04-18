@@ -21,21 +21,27 @@ async function scrapeTicketmaster(): Promise<ScrapedShow[]> {
   const data = await res.json()
   const events = data?._embedded?.events ?? []
 
-  return events.map((ev: Record<string, unknown>) => {
-    const dates = ev.dates as Record<string, unknown>
-    const start = dates?.start as Record<string, unknown>
-    const localDate = start?.localDate as string | undefined
-    const name = ev.name as string
-    const classifications = (ev.classifications as Record<string, unknown>[])?.[0]
-    const genre = (classifications?.genre as Record<string, string>)?.name
-    const ticketUrl = ev.url as string | undefined
-    return {
-      showDate: localDate || '',
-      artistName: name,
-      genre: genre && genre !== 'Undefined' ? genre : undefined,
-      ticketUrl,
-    }
-  }).filter((s: ScrapedShow) => s.showDate && s.artistName)
+  return events
+    .filter((ev: Record<string, unknown>) => {
+      const dates = ev.dates as Record<string, unknown>
+      const status = (dates?.status as Record<string, string>)?.code
+      return status !== 'cancelled' && status !== 'postponed'
+    })
+    .map((ev: Record<string, unknown>) => {
+      const dates = ev.dates as Record<string, unknown>
+      const start = dates?.start as Record<string, unknown>
+      const localDate = start?.localDate as string | undefined
+      const name = ev.name as string
+      const classifications = (ev.classifications as Record<string, unknown>[])?.[0]
+      const genre = (classifications?.genre as Record<string, string>)?.name
+      const ticketUrl = ev.url as string | undefined
+      return {
+        showDate: localDate || '',
+        artistName: name,
+        genre: genre && genre !== 'Undefined' ? genre : undefined,
+        ticketUrl,
+      }
+    }).filter((s: ScrapedShow) => s.showDate && s.artistName)
 }
 
 export async function GET(req: NextRequest) {
@@ -48,11 +54,11 @@ export async function GET(req: NextRequest) {
 
   const shows = await scrapeTicketmaster()
 
-  // Deduplicate by date
   const seen = new Set<string>()
   const unique = shows.filter(s => {
-    if (seen.has(s.showDate)) return false
-    seen.add(s.showDate)
+    const key = `${s.showDate}|${s.artistName}`
+    if (seen.has(key)) return false
+    seen.add(key)
     return true
   }).sort((a, b) => a.showDate.localeCompare(b.showDate))
 

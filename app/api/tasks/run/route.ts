@@ -46,7 +46,7 @@ async function runNlpSync(): Promise<string> {
     await sql`
       INSERT INTO nlp_shows (id, show_date, artist_name, genre, created_at)
       VALUES (${id}, ${show.showDate}, ${show.artistName}, ${show.genre ?? null}, ${new Date().toISOString()})
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (show_date, artist_name) DO NOTHING
     `
     saved++
   }

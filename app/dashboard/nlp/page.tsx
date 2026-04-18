@@ -73,7 +73,11 @@ export default function NLPPage() {
       .catch(() => setLoading(false))
   }, [monday])
 
-  const showsByDate = Object.fromEntries(shows.map(s => [s.show_date, s]))
+  const showsByDate: Record<string, Show[]> = {}
+  for (const s of shows) {
+    if (!showsByDate[s.show_date]) showsByDate[s.show_date] = []
+    showsByDate[s.show_date].push(s)
+  }
 
   const syncFromWeb = async () => {
     setSyncing(true)
@@ -191,51 +195,57 @@ export default function NLPPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {loading ? (
               <div style={{ fontSize: '13px', color: '#aaa', padding: '20px 0' }}>Loading schedule...</div>
-            ) : weekDays.map((dateStr, i) => {
-              const show = showsByDate[dateStr]
+            ) : weekDays.map((dateStr) => {
+              const dayShows = showsByDate[dateStr] || []
+              const hasShows = dayShows.length > 0
               const { day, num, month } = fmtDay(dateStr)
               return (
-                <div
-                  key={dateStr}
-                  style={{
-                    background: 'white',
-                    border: show ? '0.5px solid #d4a0a0' : '0.5px solid #e8e0d8',
-                    borderLeft: show ? '3px solid #c0392b' : '3px solid transparent',
-                    borderRadius: '10px',
-                    padding: '14px 18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    cursor: 'pointer',
-                    transition: 'border-color 0.15s',
-                  }}
-                  onClick={() => { setAddDate(dateStr); setShowAddModal(true) }}
-                >
-                  <div style={{ textAlign: 'center', minWidth: '40px' }}>
-                    <div style={{ fontSize: '10px', color: '#aaa', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{day}</div>
-                    <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, color: '#1a1210', lineHeight: 1.1 }}>{num}</div>
-                    <div style={{ fontSize: '10px', color: '#bbb' }}>{month}</div>
+                <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div
+                    style={{
+                      background: 'white',
+                      border: hasShows ? '0.5px solid #d4a0a0' : '0.5px solid #e8e0d8',
+                      borderLeft: hasShows ? '3px solid #c0392b' : '3px solid transparent',
+                      borderRadius: '10px',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => { setAddDate(dateStr); setShowAddModal(true) }}
+                  >
+                    <div style={{ textAlign: 'center', minWidth: '40px' }}>
+                      <div style={{ fontSize: '10px', color: '#aaa', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{day}</div>
+                      <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, color: '#1a1210', lineHeight: 1.1 }}>{num}</div>
+                      <div style={{ fontSize: '10px', color: '#bbb' }}>{month}</div>
+                    </div>
+                    <div style={{ width: '0.5px', height: '36px', background: '#e8e0d8', flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      {hasShows ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {dayShows.map((show, idx) => (
+                            <div key={show.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1 }}>
+                                {idx > 0 && <div style={{ height: '0.5px', background: '#f0e8e0', marginBottom: '8px' }} />}
+                                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>{show.artist_name}</div>
+                                {show.genre && <div style={{ fontSize: '11px', color: '#c0392b', marginTop: '2px', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>{show.genre}</div>}
+                                {show.description && <div style={{ fontSize: '12px', color: '#888', marginTop: '3px' }}>{show.description}</div>}
+                              </div>
+                              <button
+                                onClick={e => { e.stopPropagation(); deleteShow(show.id) }}
+                                style={{ background: 'none', border: 'none', fontSize: '16px', color: '#ddd', cursor: 'pointer', padding: '4px', flexShrink: 0 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '13px', color: '#ccc' }}>No show — tap to add</div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ width: '0.5px', height: '36px', background: '#e8e0d8', flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    {show ? (
-                      <>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>{show.artist_name}</div>
-                        {show.genre && <div style={{ fontSize: '11px', color: '#c0392b', marginTop: '2px', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>{show.genre}</div>}
-                        {show.description && <div style={{ fontSize: '12px', color: '#888', marginTop: '3px' }}>{show.description}</div>}
-                      </>
-                    ) : (
-                      <div style={{ fontSize: '13px', color: '#ccc' }}>No show — tap to add</div>
-                    )}
-                  </div>
-                  {show && (
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteShow(show.id) }}
-                      style={{ background: 'none', border: 'none', fontSize: '16px', color: '#ddd', cursor: 'pointer', padding: '4px' }}
-                    >
-                      ×
-                    </button>
-                  )}
                 </div>
               )
             })}
@@ -285,7 +295,7 @@ export default function NLPPage() {
           weekDays={weekDays}
           onClose={() => { setShowAddModal(false); setAddDate(null) }}
           onAdd={(show) => {
-            setShows(s => [...s.filter(x => x.show_date !== show.show_date), show])
+            setShows(s => [...s, show])
             setShowAddModal(false)
             setPosterKey(k => k + 1)
           }}
