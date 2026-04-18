@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { NextRequest } from 'next/server'
-import { neon } from '@neondatabase/serverless'
+import { getLiveShows } from '@/lib/nlp-scrape'
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
@@ -17,15 +17,15 @@ function getMonday(dateStr?: string): Date {
 function genreColor(genre?: string): string {
   if (!genre) return '#c0392b'
   const g = genre.toLowerCase()
-  if (g.includes('metal') || g.includes('punk')) return '#e74c3c'
-  if (g.includes('rock')) return '#e8643c'
-  if (g.includes('electronic') || g.includes('dance') || g.includes('edm')) return '#00bcd4'
-  if (g.includes('hip') || g.includes('rap')) return '#f39c12'
-  if (g.includes('r&b') || g.includes('soul')) return '#ff9800'
-  if (g.includes('alternative') || g.includes('indie')) return '#ab47bc'
-  if (g.includes('jazz') || g.includes('blues')) return '#42a5f5'
-  if (g.includes('country') || g.includes('folk')) return '#8bc34a'
-  if (g.includes('pop')) return '#ec407a'
+  if (g.includes('metal') || g.includes('punk')) return '#c0392b'
+  if (g.includes('rock')) return '#b03a2e'
+  if (g.includes('electronic') || g.includes('dance') || g.includes('edm')) return '#0077aa'
+  if (g.includes('hip') || g.includes('rap')) return '#b07d00'
+  if (g.includes('r&b') || g.includes('soul')) return '#a04000'
+  if (g.includes('alternative') || g.includes('indie')) return '#7b2d8b'
+  if (g.includes('jazz') || g.includes('blues')) return '#1565c0'
+  if (g.includes('country') || g.includes('folk')) return '#4a7c2f'
+  if (g.includes('pop')) return '#ad1457'
   return '#c0392b'
 }
 
@@ -39,22 +39,28 @@ async function getSpotifyToken(): Promise<string | null> {
       method: 'POST',
       headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=client_credentials',
+      signal: AbortSignal.timeout(5000),
     })
     const data = await res.json()
     return data.access_token || null
   } catch { return null }
 }
 
-async function getArtistImage(token: string, rawName: string): Promise<string | null> {
+async function getArtistImageBase64(token: string, rawName: string): Promise<string | null> {
   try {
     const primary = rawName.split(/[,·]/)[0].trim()
     const res = await fetch(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(primary)}&type=artist&limit=1`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) }
     )
     const data = await res.json()
-    const imgs = data.artists?.items?.[0]?.images
-    return imgs?.[0]?.url || null
+    const imgUrl = data.artists?.items?.[0]?.images?.[0]?.url
+    if (!imgUrl) return null
+    // Fetch and convert to base64 — Satori cannot load external URLs
+    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(5000) })
+    if (!imgRes.ok) return null
+    const buf = await imgRes.arrayBuffer()
+    return `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`
   } catch { return null }
 }
 
@@ -67,40 +73,39 @@ export async function GET(req: NextRequest) {
     d.setUTCDate(d.getUTCDate() + i)
     return d
   })
-
   const weekStartStr = monday.toISOString().split('T')[0]
   const weekEndStr = weekDays[6].toISOString().split('T')[0]
 
-  const sql = neon(process.env.DATABASE_URL!)
-  const rows = await sql`
-    SELECT show_date, artist_name, genre, description FROM nlp_shows
-    WHERE show_date >= ${weekStartStr} AND show_date <= ${weekEndStr}
-    ORDER BY show_date, artist_name
-  `
+  // Fetch live show data from Ticketmaster + Scenic NYC
+  const allShows = await getLiveShows()
+  const weekShows = allShows.filter(s => s.showDate >= weekStartStr && s.showDate <= weekEndStr)
 
+  // Group by date, supporting multiple shows per day
   type ShowEntry = { artists: string[]; genre?: string; description?: string }
   const byDate: Record<string, ShowEntry> = {}
-  for (const r of rows) {
-    const date = r.show_date as string
-    if (!byDate[date]) byDate[date] = { artists: [], genre: r.genre as string | undefined, description: r.description as string | undefined }
-    byDate[date].artists.push(r.artist_name as string)
+  for (const s of weekShows) {
+    if (!byDate[s.showDate]) byDate[s.showDate] = { artists: [], genre: s.genre, description: s.description }
+    byDate[s.showDate].artists.push(s.artistName)
+    if (!byDate[s.showDate].genre && s.genre) byDate[s.showDate].genre = s.genre
+    if (!byDate[s.showDate].description && s.description) byDate[s.showDate].description = s.description
   }
 
   const showDays = weekDays.filter(d => byDate[d.toISOString().split('T')[0]])
   const showCount = showDays.length
 
+  // Fetch Spotify artist photos as base64 (Satori requires base64, not external URLs)
   const spotifyToken = await getSpotifyToken()
   const images: Record<string, string | null> = {}
   if (spotifyToken && showCount > 0) {
     await Promise.all(showDays.map(async d => {
       const ds = d.toISOString().split('T')[0]
-      images[ds] = await getArtistImage(spotifyToken, byDate[ds].artists[0])
+      images[ds] = await getArtistImageBase64(spotifyToken, byDate[ds].artists[0])
     }))
   }
 
   const weekLabel = `${MONTHS[monday.getUTCMonth()]} ${monday.getUTCDate()} – ${MONTHS[weekDays[6].getUTCMonth()]} ${weekDays[6].getUTCDate()}, ${monday.getUTCFullYear()}`
 
-  // Try to load the venue logo
+  // Load venue logo as base64
   const base = process.env.NEXTAUTH_URL || 'https://www.nd-ex.com'
   let logoData: string | null = null
   try {
@@ -109,15 +114,19 @@ export async function GET(req: NextRequest) {
       const buf = await logoRes.arrayBuffer()
       logoData = `data:image/png;base64,${Buffer.from(buf).toString('base64')}`
     }
-  } catch { /* no logo */ }
+  } catch { /* no logo, use text fallback */ }
 
-  const HEADER_H = logoData ? 230 : 210
-  const FOOTER_H = 52
-  const BODY_H = 1080 - HEADER_H - FOOTER_H
+  // Layout
+  const W = 1080
+  const H = 1080
+  const HEADER_H = 220
+  const FOOTER_H = 60
+  const BODY_H = H - HEADER_H - FOOTER_H
   const rowH = showCount > 0 ? Math.floor(BODY_H / showCount) : BODY_H
-  const imgSize = Math.min(rowH - 20, 160)
+  const imgW = 180
+  const imgH = Math.min(rowH - 16, 180)
 
-  // Build show rows for days that have shows
+  type ShowRow = { ds: string; day: Date; show: ShowEntry; dayIdx: number; color: string; img: string | null }
   const showRows = weekDays
     .map(day => {
       const ds = day.toISOString().split('T')[0]
@@ -126,35 +135,48 @@ export async function GET(req: NextRequest) {
       const dayIdx = day.getUTCDay() === 0 ? 6 : day.getUTCDay() - 1
       return { ds, day, show, dayIdx, color: genreColor(show.genre), img: images[ds] || null }
     })
-    .filter(Boolean) as Array<{ ds: string; day: Date; show: ShowEntry; dayIdx: number; color: string; img: string | null }>
+    .filter((x): x is ShowRow => x !== null)
+
+  // Cream concert poster — high contrast, readable at thumbnail size
+  const BG = '#f5f0e8'
+  const INK = '#1a1210'
+  const MUTED = '#6b5d52'
+  const RULE_COLOR = '#c8bdb0'
 
   return new ImageResponse(
     (
-      <div style={{ width: 1080, height: 1080, background: '#060606', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: W, height: H, background: BG, display: 'flex', flexDirection: 'column' }}>
 
         {/* HEADER */}
-        <div style={{ height: HEADER_H, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #1a1a1a' }}>
+        <div style={{
+          height: HEADER_H,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderBottom: `3px solid ${INK}`,
+        }}>
           {logoData ? (
-            <img src={logoData} alt="Nikki Lopez" width={320} height={140} style={{ width: 320, height: 140, objectFit: 'contain', marginBottom: 12 }} />
+            <img src={logoData} width={340} height={130} style={{ width: 340, height: 130, objectFit: 'contain' }} alt="" />
           ) : (
-            <>
-              <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 14, display: 'flex' }}>
-                ◆  COMING UP AT  ◆
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 10, display: 'flex' }}>
+                ◆  LIVE MUSIC AT  ◆
               </div>
-              <div style={{ fontSize: 82, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
+              <div style={{ fontSize: 74, fontWeight: 900, color: INK, letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
                 NIKKI LOPEZ
               </div>
-              <div style={{ fontSize: 13, color: '#666', letterSpacing: '0.7em', marginTop: 8, display: 'flex' }}>
-                SOUTH STREET PHILLY
+              <div style={{ fontSize: 12, color: MUTED, letterSpacing: '0.6em', marginTop: 6, display: 'flex' }}>
+                SOUTH STREET  ·  PHILADELPHIA
               </div>
-            </>
+            </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: 16 }}>
-            <div style={{ width: 28, height: 1, background: '#333', display: 'flex' }} />
-            <div style={{ fontSize: 11, color: '#888', letterSpacing: '0.22em', padding: '0 14px', display: 'flex' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: 18 }}>
+            <div style={{ width: 40, height: 1, background: MUTED, display: 'flex' }} />
+            <div style={{ fontSize: 11, color: MUTED, letterSpacing: '0.25em', padding: '0 16px', display: 'flex' }}>
               {weekLabel}
             </div>
-            <div style={{ width: 28, height: 1, background: '#333', display: 'flex' }} />
+            <div style={{ width: 40, height: 1, background: MUTED, display: 'flex' }} />
           </div>
         </div>
 
@@ -162,51 +184,79 @@ export async function GET(req: NextRequest) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {showCount === 0 ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ fontSize: 18, color: '#222', letterSpacing: '0.3em', display: 'flex' }}>NO SHOWS SCHEDULED</div>
+              <div style={{ fontSize: 22, color: MUTED, letterSpacing: '0.3em', display: 'flex' }}>NO SHOWS THIS WEEK</div>
             </div>
-          ) : showRows.map(({ ds, day, show, dayIdx, color, img }) => {
+          ) : showRows.map(({ ds, show, day, dayIdx, color, img }, idx) => {
             const artistLine = show.artists.join('  ·  ')
-            const nameSize = artistLine.length > 50 ? 30 : artistLine.length > 35 ? 38 : artistLine.length > 22 ? 46 : 58
+            const nameSize = artistLine.length > 50 ? 28 : artistLine.length > 35 ? 36 : artistLine.length > 22 ? 44 : 54
+            const isLast = idx === showRows.length - 1
 
             return (
-              <div key={ds} style={{ height: rowH, display: 'flex', flexDirection: 'row', alignItems: 'center', borderBottom: '1px solid #0f0f0f', background: '#080808' }}>
-
-                {/* Color bar */}
-                <div style={{ width: 4, height: rowH, background: color, flexShrink: 0, display: 'flex' }} />
+              <div
+                key={ds}
+                style={{
+                  height: rowH,
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderBottom: isLast ? 'none' : `1px solid ${INK}`,
+                  background: BG,
+                }}
+              >
+                {/* Genre color bar */}
+                <div style={{ width: 6, height: rowH, background: color, flexShrink: 0, display: 'flex' }} />
 
                 {/* Day block */}
-                <div style={{ width: 90, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 20 }}>
-                  <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
-                  <div style={{ fontSize: 42, fontWeight: 900, color: '#ffffff', lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
-                  <div style={{ fontSize: 9, color: '#666', letterSpacing: '0.15em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
+                <div style={{
+                  width: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  paddingLeft: 16,
+                  paddingRight: 8,
+                }}>
+                  <div style={{ fontSize: 10, color: MUTED, letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
+                  <div style={{ fontSize: 46, fontWeight: 900, color: INK, lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
+                  <div style={{ fontSize: 9, color: MUTED, letterSpacing: '0.2em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
                 </div>
 
-                {/* Separator */}
-                <div style={{ width: 1, height: rowH * 0.45, background: '#2a2a2a', marginLeft: 18, flexShrink: 0, display: 'flex' }} />
+                {/* Vertical rule */}
+                <div style={{ width: 1, height: rowH * 0.5, background: RULE_COLOR, flexShrink: 0, display: 'flex' }} />
 
-                {/* Artist name + genre */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 24, paddingRight: 20 }}>
-                  <div style={{ fontSize: nameSize, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em', lineHeight: 1.1, display: 'flex' }}>
+                {/* Artist + genre */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 28, paddingRight: 20 }}>
+                  <div style={{ fontSize: nameSize, fontWeight: 900, color: INK, letterSpacing: '-0.01em', lineHeight: 1.1, display: 'flex' }}>
                     {artistLine}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 8, gap: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
                     {show.genre && (
-                      <div style={{ fontSize: 10, color: color, letterSpacing: '0.22em', padding: '3px 10px', border: `1px solid ${color}`, borderRadius: 2, display: 'flex', marginRight: 12 }}>
+                      <div style={{
+                        fontSize: 9,
+                        color: color,
+                        letterSpacing: '0.25em',
+                        padding: '3px 10px',
+                        border: `1.5px solid ${color}`,
+                        borderRadius: 2,
+                        display: 'flex',
+                        marginRight: 14,
+                      }}>
                         {show.genre.toUpperCase()}
                       </div>
                     )}
                     {show.description && rowH > 120 && (
-                      <div style={{ fontSize: 11, color: '#777', display: 'flex', overflow: 'hidden' }}>
+                      <div style={{ fontSize: 11, color: MUTED, display: 'flex', overflow: 'hidden' }}>
                         {show.description.slice(0, 80)}{show.description.length > 80 ? '…' : ''}
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Artist photo */}
+                {/* Spotify artist photo */}
                 {img && (
-                  <div style={{ width: imgSize, height: imgSize, marginRight: 32, borderRadius: 4, overflow: 'hidden', flexShrink: 0, display: 'flex' }}>
-                    <img src={img} width={imgSize} height={imgSize} alt="" style={{ width: imgSize, height: imgSize }} />
+                  <div style={{ width: imgW, height: imgH, marginRight: 28, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+                    <img src={img} width={imgW} height={imgH} alt="" style={{ width: imgW, height: imgH, objectFit: 'cover' }} />
                   </div>
                 )}
               </div>
@@ -215,13 +265,20 @@ export async function GET(req: NextRequest) {
         </div>
 
         {/* FOOTER */}
-        <div style={{ height: FOOTER_H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #1a1a1a' }}>
-          <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.4em', display: 'flex' }}>
+        <div style={{
+          height: FOOTER_H,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderTop: `3px solid ${INK}`,
+          background: INK,
+        }}>
+          <div style={{ fontSize: 11, color: BG, letterSpacing: '0.45em', display: 'flex' }}>
             NIKKITLOPEZPHILLY.COM
           </div>
         </div>
       </div>
     ),
-    { width: 1080, height: 1080 }
+    { width: W, height: H }
   )
 }
