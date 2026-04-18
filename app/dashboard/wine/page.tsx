@@ -371,7 +371,6 @@ function AddWineModal({ onClose, onAdd }: { onClose: () => void, onAdd: (w: Wine
   const [form, setForm] = useState<WineForm>({ name: '', producer: '', vintage: '', region: '', varietal: '', estimatedRetailCost: '', notes: '', myRating: '7' })
   const [saving, setSaving] = useState(false)
   const cameraRef = useRef<HTMLInputElement>(null)
-  const uploadRef = useRef<HTMLInputElement>(null)
 
   const handleImageFile = async (file: File) => {
     setStep('identifying')
@@ -475,21 +474,12 @@ function AddWineModal({ onClose, onAdd }: { onClose: () => void, onAdd: (w: Wine
         {step === 'method' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <input ref={cameraRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
-            <input ref={uploadRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
 
             <button onClick={() => cameraRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
               <span style={{ fontSize: '26px' }}>📷</span>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Take a photo</div>
-                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Use your camera to snap the label</div>
-              </div>
-            </button>
-
-            <button onClick={() => uploadRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
-              <span style={{ fontSize: '26px' }}>🖼️</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Upload a photo</div>
-                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Choose an image from your library</div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Add a photo</div>
+                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Take a photo or choose from your library</div>
               </div>
             </button>
 
