@@ -14,18 +14,38 @@ function getMonday(dateStr?: string): Date {
   return mon
 }
 
+function spotifyGenreToDisplay(genres: string[]): string | null {
+  if (!genres.length) return null
+  // Map Spotify's free-form genre tags to clean display labels
+  const joined = genres.join(' ').toLowerCase()
+  if (joined.includes('metal') || joined.includes('hardcore') || joined.includes('punk')) return 'Metal / Punk'
+  if (joined.includes('hard rock') || joined.includes('classic rock') || joined.includes('rock')) return 'Rock'
+  if (joined.includes('edm') || joined.includes('electronic') || joined.includes('dance') || joined.includes('house') || joined.includes('techno') || joined.includes('trance')) return 'Electronic'
+  if (joined.includes('hip hop') || joined.includes('hip-hop') || joined.includes('rap') || joined.includes('trap')) return 'Hip-Hop'
+  if (joined.includes('r&b') || joined.includes('soul') || joined.includes('funk')) return 'R&B / Soul'
+  if (joined.includes('indie') || joined.includes('alternative') || joined.includes('alt-')) return 'Alternative'
+  if (joined.includes('jazz') || joined.includes('blues')) return 'Jazz / Blues'
+  if (joined.includes('country') || joined.includes('folk') || joined.includes('americana')) return 'Country / Folk'
+  if (joined.includes('pop')) return 'Pop'
+  if (joined.includes('reggae') || joined.includes('ska')) return 'Reggae'
+  if (joined.includes('classical') || joined.includes('orchestral')) return 'Classical'
+  // Return the first Spotify genre tag cleaned up as fallback
+  return genres[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 function genreColor(genre?: string): string {
   if (!genre) return '#e53935'
   const g = genre.toLowerCase()
-  if (g.includes('metal') || g.includes('punk')) return '#e53935'
+  if (g.includes('metal') || g.includes('punk') || g.includes('hardcore')) return '#e53935'
   if (g.includes('rock')) return '#ff6d3a'
-  if (g.includes('electronic') || g.includes('dance') || g.includes('edm')) return '#00b0d8'
-  if (g.includes('hip') || g.includes('rap')) return '#ffd600'
-  if (g.includes('r&b') || g.includes('soul')) return '#ff9800'
-  if (g.includes('alternative') || g.includes('indie')) return '#ce93d8'
+  if (g.includes('electronic') || g.includes('dance') || g.includes('edm') || g.includes('house')) return '#00b0d8'
+  if (g.includes('hip') || g.includes('rap') || g.includes('trap')) return '#ffd600'
+  if (g.includes('r&b') || g.includes('soul') || g.includes('funk')) return '#ff9800'
+  if (g.includes('alternative') || g.includes('indie') || g.includes('alt')) return '#ce93d8'
   if (g.includes('jazz') || g.includes('blues')) return '#64b5f6'
-  if (g.includes('country') || g.includes('folk')) return '#a5d6a7'
+  if (g.includes('country') || g.includes('folk') || g.includes('americana')) return '#a5d6a7'
   if (g.includes('pop')) return '#f48fb1'
+  if (g.includes('reggae') || g.includes('ska')) return '#80cbc4'
   return '#e53935'
 }
 
@@ -46,21 +66,57 @@ async function getSpotifyToken(): Promise<string | null> {
   } catch { return null }
 }
 
-async function getArtistImageBase64(token: string, rawName: string): Promise<string | null> {
+type ArtistData = { imageBase64: string | null; genres: string[] }
+
+async function getArtistData(token: string, rawName: string): Promise<ArtistData> {
   try {
+    // Search each individual act — use the headliner (first name before comma/·)
     const primary = rawName.split(/[,·]/)[0].trim()
     const res = await fetch(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(primary)}&type=artist&limit=1`,
       { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) }
     )
     const data = await res.json()
-    const imgUrl = data.artists?.items?.[0]?.images?.[0]?.url
-    if (!imgUrl) return null
-    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(5000) })
-    if (!imgRes.ok) return null
+    const artist = data.artists?.items?.[0]
+    if (!artist) return { imageBase64: null, genres: [] }
+
+    const genres: string[] = artist.genres || []
+
+    // Use medium-sized image (index 1 = ~300px) to keep base64 manageable
+    const imgs: { url: string }[] = artist.images || []
+    const imgUrl = imgs[1]?.url || imgs[0]?.url || null
+    if (!imgUrl) return { imageBase64: null, genres }
+
+    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(6000) })
+    if (!imgRes.ok) return { imageBase64: null, genres }
     const buf = await imgRes.arrayBuffer()
-    return `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`
-  } catch { return null }
+    const imageBase64 = `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`
+    return { imageBase64, genres }
+  } catch {
+    return { imageBase64: null, genres: [] }
+  }
+}
+
+// When Ticketmaster says "Other", search every individual artist on the bill
+// and return the first real genre found across all of them
+async function resolveGenre(token: string, artistLine: string, tmGenre?: string): Promise<string | undefined> {
+  const isOther = !tmGenre || tmGenre.toLowerCase() === 'other' || tmGenre.toLowerCase() === 'undefined'
+  if (!isOther) return tmGenre
+
+  const acts = artistLine.split(/[,·]/).map(a => a.trim()).filter(Boolean)
+  for (const act of acts) {
+    try {
+      const res = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(act)}&type=artist&limit=1`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) }
+      )
+      const data = await res.json()
+      const genres: string[] = data.artists?.items?.[0]?.genres || []
+      const mapped = spotifyGenreToDisplay(genres)
+      if (mapped) return mapped
+    } catch { /* try next act */ }
+  }
+  return undefined
 }
 
 export async function GET(req: NextRequest) {
@@ -91,11 +147,20 @@ export async function GET(req: NextRequest) {
   const showCount = showDays.length
 
   const spotifyToken = await getSpotifyToken()
-  const images: Record<string, string | null> = {}
+
+  // Fetch artist images AND resolve "Other" genres in parallel
+  const artistDataMap: Record<string, ArtistData> = {}
   if (spotifyToken && showCount > 0) {
     await Promise.all(showDays.map(async d => {
       const ds = d.toISOString().split('T')[0]
-      images[ds] = await getArtistImageBase64(spotifyToken, byDate[ds].artists[0])
+      const show = byDate[ds]
+      const [artistData, resolvedGenre] = await Promise.all([
+        getArtistData(spotifyToken, show.artists[0]),
+        resolveGenre(spotifyToken, show.artists.join(', '), show.genre),
+      ])
+      artistDataMap[ds] = artistData
+      // Overwrite genre if we got a better one
+      if (resolvedGenre) byDate[ds].genre = resolvedGenre
     }))
   }
 
@@ -114,8 +179,7 @@ export async function GET(req: NextRequest) {
   const W = 1080
   const H = 1080
   const HEADER_H = 200
-  const FOOTER_H = 56
-  const BODY_H = H - HEADER_H - FOOTER_H
+  const BODY_H = H - HEADER_H
   const rowH = showCount > 0 ? Math.floor(BODY_H / showCount) : BODY_H
   const imgSize = Math.min(rowH - 12, 150)
 
@@ -126,11 +190,14 @@ export async function GET(req: NextRequest) {
       const show = byDate[ds]
       if (!show) return null
       const dayIdx = day.getUTCDay() === 0 ? 6 : day.getUTCDay() - 1
-      return { ds, day, show, dayIdx, color: genreColor(show.genre), img: images[ds] || null }
+      return {
+        ds, day, show, dayIdx,
+        color: genreColor(show.genre),
+        img: artistDataMap[ds]?.imageBase64 || null,
+      }
     })
     .filter((x): x is ShowRow => x !== null)
 
-  // Dark poster — true black bg, bright whites, vivid color accents
   const BG = '#0a0a0a'
   const ROW_BG = '#111111'
   const BORDER = '#222222'
@@ -183,7 +250,6 @@ export async function GET(req: NextRequest) {
           ) : showRows.map(({ ds, show, day, dayIdx, color, img }, idx) => {
             const artistLine = show.artists.join('  ·  ')
             const nameSize = artistLine.length > 50 ? 30 : artistLine.length > 35 ? 40 : artistLine.length > 22 ? 50 : 62
-            const hasDesc = !!show.description
             const isLast = idx === showRows.length - 1
 
             return (
@@ -198,10 +264,10 @@ export async function GET(req: NextRequest) {
                   borderBottom: isLast ? 'none' : `1px solid ${BORDER}`,
                 }}
               >
-                {/* Color accent bar — full height, wide */}
+                {/* Color accent bar */}
                 <div style={{ width: 8, height: rowH, background: color, flexShrink: 0, display: 'flex' }} />
 
-                {/* Day block */}
+                {/* Day */}
                 <div style={{
                   width: 110,
                   display: 'flex',
@@ -215,15 +281,15 @@ export async function GET(req: NextRequest) {
                   <div style={{ fontSize: 10, color: DIM, letterSpacing: '0.2em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
                 </div>
 
-                {/* Vertical rule */}
+                {/* Divider */}
                 <div style={{ width: 1, height: rowH * 0.55, background: '#2a2a2a', flexShrink: 0, display: 'flex' }} />
 
-                {/* Artist info */}
+                {/* Artist + genre + description */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 28, paddingRight: 16 }}>
                   <div style={{ fontSize: nameSize, fontWeight: 900, color: WHITE, letterSpacing: '-0.01em', lineHeight: 1.1, display: 'flex' }}>
                     {artistLine}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 10, flexWrap: 'nowrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: 10 }}>
                     {show.genre && (
                       <div style={{
                         fontSize: 10,
@@ -239,15 +305,15 @@ export async function GET(req: NextRequest) {
                         {show.genre.toUpperCase()}
                       </div>
                     )}
-                    {hasDesc && rowH >= 90 && (
+                    {show.description && rowH >= 90 && (
                       <div style={{ fontSize: 12, color: '#666', display: 'flex', overflow: 'hidden' }}>
-                        {show.description!.slice(0, 70)}{show.description!.length > 70 ? '…' : ''}
+                        {show.description.slice(0, 70)}{show.description.length > 70 ? '…' : ''}
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Spotify artist photo */}
+                {/* Artist photo */}
                 {img && (
                   <div style={{ width: imgSize, height: imgSize, marginRight: 24, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
                     <img src={img} width={imgSize} height={imgSize} alt="" style={{ width: imgSize, height: imgSize, objectFit: 'cover' }} />
@@ -256,19 +322,6 @@ export async function GET(req: NextRequest) {
               </div>
             )
           })}
-        </div>
-
-        {/* FOOTER */}
-        <div style={{
-          height: FOOTER_H,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderTop: `1px solid ${BORDER}`,
-        }}>
-          <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.45em', display: 'flex' }}>
-            NIKKITLOPEZPHILLY.COM
-          </div>
         </div>
       </div>
     ),
