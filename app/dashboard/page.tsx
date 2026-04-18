@@ -110,7 +110,30 @@ export default function DashboardHome() {
   useEffect(() => {
     fetch('/api/tasks')
       .then(r => r.json())
-      .then(d => { setTasks(d.tasks || []); setTasksLoading(false) })
+      .then(async d => {
+        const loaded: Task[] = d.tasks || []
+        setTasks(loaded)
+        setTasksLoading(false)
+        // Auto-create the NLP weekly sync task if it doesn't exist
+        const hasNlpTask = loaded.some(t => t.agent_id === 'nlp' && t.task_type === 'nlp-sync')
+        if (!hasNlpTask) {
+          const res = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'Weekly Show Sync',
+              description: 'Scrape Ticketmaster for next weeks Nikki Lopez shows',
+              schedule: 'weekly-saturday',
+              agentId: 'nlp',
+              taskType: 'nlp-sync',
+            }),
+          })
+          if (res.ok) {
+            const newTask = await res.json()
+            setTasks(t => [newTask, ...t])
+          }
+        }
+      })
       .catch(() => setTasksLoading(false))
   }, [])
 

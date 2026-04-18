@@ -74,9 +74,12 @@ async function chatViaClaude(agentId: string, message: string, imageBase64?: str
   let system: string
   if (agentId === 'nlp') {
     const showsContext = await getShowsContext()
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     system = `You are the NLP assistant for Nikki Lopez Philly, a live music venue in Philadelphia. You help with the show schedule, upcoming events, and venue questions.
 
-Upcoming shows:
+Today is ${today}.
+
+Upcoming shows (next 2 weeks):
 ${showsContext}
 
 Be concise, helpful, and enthusiastic about live music.`
