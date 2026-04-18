@@ -54,6 +54,8 @@ export default function NLPPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [addDate, setAddDate] = useState<string | null>(null)
   const [posterKey, setPosterKey] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
 
   const monday = getMonday(weekOffset)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
@@ -72,6 +74,37 @@ export default function NLPPage() {
   }, [monday])
 
   const showsByDate = Object.fromEntries(shows.map(s => [s.show_date, s]))
+
+  const syncFromWeb = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/nlp/scrape')
+      const { shows: scraped, count } = await res.json()
+      if (count === 0) {
+        setSyncResult('No shows found online right now.')
+      } else {
+        // Save each scraped show
+        let saved = 0
+        for (const s of scraped) {
+          const r = await fetch('/api/nlp/shows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ showDate: s.showDate, artistName: s.artistName, genre: s.genre, description: s.description }),
+          })
+          if (r.ok) saved++
+        }
+        // Refresh
+        const d = await fetch(`/api/nlp/shows?week=${monday}`).then(r => r.json())
+        setShows(d.shows || [])
+        setPosterKey(k => k + 1)
+        setSyncResult(`Found ${count} show${count !== 1 ? 's' : ''} online, saved ${saved}.`)
+      }
+    } catch {
+      setSyncResult('Sync failed — check connection.')
+    }
+    setSyncing(false)
+  }
 
   const deleteShow = async (id: string) => {
     await fetch(`/api/nlp/shows?id=${id}`, { method: 'DELETE' })
@@ -129,13 +162,28 @@ export default function NLPPage() {
             <button onClick={() => setWeekOffset(0)} style={{ padding: '6px 12px', background: weekOffset === 0 ? '#f0e8e0' : 'white', border: '0.5px solid #e8e0d8', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontFamily: 'DM Sans, sans-serif', color: '#555' }}>This week</button>
             <button onClick={() => setWeekOffset(o => o + 1)} style={{ width: '32px', height: '32px', background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
             <button
+              onClick={syncFromWeb}
+              disabled={syncing}
+              style={{ padding: '9px 14px', background: 'white', color: '#555', border: '0.5px solid #e8e0d8', borderRadius: '10px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', cursor: syncing ? 'default' : 'pointer' }}
+            >
+              {syncing ? 'Syncing...' : '↻ Sync web'}
+            </button>
+            <button
               onClick={() => { setAddDate(null); setShowAddModal(true) }}
-              style={{ padding: '9px 18px', background: '#c0392b', color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', fontWeight: 500, marginLeft: '8px' }}
+              style={{ padding: '9px 18px', background: '#c0392b', color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', fontWeight: 500 }}
             >
               + Add show
             </button>
           </div>
         </div>
+
+        {/* Sync result banner */}
+        {syncResult && (
+          <div style={{ padding: '10px 28px', background: syncResult.includes('failed') ? '#fff0f0' : '#f0faf5', borderBottom: '0.5px solid #e8e0d8', fontSize: '13px', color: syncResult.includes('failed') ? '#c0392b' : '#0F6E56', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {syncResult}
+            <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: '16px' }}>×</button>
+          </div>
+        )}
 
         {/* Content */}
         <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', gap: '24px' }}>

@@ -167,7 +167,7 @@ export default function DashboardHome() {
             <span style={{ fontSize: '24px' }}>🎵</span>
             <div>
               <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '17px', fontWeight: 400, color: '#1a1210' }}>NLP</div>
-              <div style={{ fontSize: '11px', color: '#aaa', marginTop: '1px' }}>Nikki Lopez Venue →</div>
+              <div style={{ fontSize: '11px', color: '#aaa', marginTop: '1px' }}>Nikki Lopez →</div>
             </div>
           </div>
         </div>
