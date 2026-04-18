@@ -32,5 +32,5 @@ export async function GET(req: NextRequest) {
     myRating: r.my_rating ?? undefined,
   }))
 
-  return NextResponse.json(wines)
+  return NextResponse.json({ cellar: wines })
 }
