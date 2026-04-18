@@ -151,13 +151,6 @@ export default function WineDashboard() {
         </div>
 
         <div style={s.navSection}>
-          <div style={s.navLabel}>Agents</div>
-          <div style={s.navItem(true)}>🍷 Wine cellar</div>
-          <div style={{ ...s.navItem(false), opacity: 0.4 }}>⚡ Code runner</div>
-          <div style={{ ...s.navItem(false), opacity: 0.4 }}>🔍 Web scraper</div>
-        </div>
-
-        <div style={{ ...s.navSection, borderTop: '0.5px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
           <div style={s.navLabel}>Wine</div>
           <div style={s.navItem(tab === 'cellar')} onClick={() => setTab('cellar')}>🏠 My cellar</div>
           <div style={s.navItem(tab === 'had')} onClick={() => setTab('had')}>★ Wines I&apos;ve had</div>

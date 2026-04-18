@@ -19,22 +19,6 @@ const agents = [
     href: '/dashboard/wine',
     available: true,
   },
-  {
-    id: 'code',
-    emoji: '⚡',
-    name: 'Code Runner',
-    description: 'Write, run, and debug code snippets in any language.',
-    href: '/dashboard/code',
-    available: false,
-  },
-  {
-    id: 'scraper',
-    emoji: '🔍',
-    name: 'Web Scraper',
-    description: 'Extract data and monitor websites automatically.',
-    href: '/dashboard/scraper',
-    available: false,
-  },
 ]
 
 export default function DashboardHome() {
