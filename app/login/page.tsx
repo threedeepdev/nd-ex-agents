@@ -5,7 +5,7 @@ import { Suspense } from 'react'
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard/wine'
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f9f6f1' }}>

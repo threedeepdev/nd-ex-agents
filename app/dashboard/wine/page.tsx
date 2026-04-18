@@ -1,5 +1,5 @@
 'use client'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 
@@ -12,18 +12,27 @@ type Wine = {
   country?: string
   varietal?: string
   score?: number
+  estimatedRetailCost?: number
   drinkFrom?: number
   drinkUntil?: number
   pairings?: string[]
   notes?: string
   addedDate?: string
   status: 'in_cellar' | 'consumed'
+  tasted?: boolean
   consumedDate?: string
   myRating?: number
 }
 
 type Tab = 'cellar' | 'had'
 type Message = { role: 'user' | 'assistant'; content: string }
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
 
 export default function WineDashboard() {
   const { data: session, status } = useSession()
@@ -55,7 +64,7 @@ export default function WineDashboard() {
   }, [messages])
 
   const cellar = wines.filter(w => w.status === 'in_cellar')
-  const had = wines.filter(w => w.status === 'consumed')
+  const had = wines.filter(w => w.status === 'consumed' || (w.status === 'in_cellar' && w.tasted))
   const readyNow = cellar.filter(w => w.drinkFrom && w.drinkFrom <= new Date().getFullYear())
 
   const sendChat = async () => {
@@ -106,8 +115,6 @@ export default function WineDashboard() {
     sidebarTop: { padding: '24px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.08)' },
     wordmark: { fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 300, color: 'white', letterSpacing: '-0.02em' },
     wordmarkSpan: { color: '#c0392b' },
-    userRow: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px' },
-    avatar: { width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(192,57,43,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 500, color: '#e88' },
     navSection: { padding: '16px 12px' },
     navLabel: { fontSize: '10px', color: 'rgba(255,255,255,0.3)', padding: '4px 8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const },
     navItem: (active: boolean) => ({ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 8px', borderRadius: '8px', fontSize: '13px', color: active ? 'white' : 'rgba(255,255,255,0.5)', background: active ? 'rgba(255,255,255,0.08)' : 'transparent', cursor: 'pointer', marginBottom: '2px', fontWeight: active ? 500 : 400 }),
@@ -118,8 +125,6 @@ export default function WineDashboard() {
     stat: { background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '12px', padding: '14px' },
     statLabel: { fontSize: '11px', color: '#888', marginBottom: '4px' },
     statValue: { fontSize: '24px', fontWeight: 500, color: '#1a1210', fontFamily: 'Cormorant Garamond, serif' },
-    tabs: { display: 'flex', gap: '0', borderBottom: '0.5px solid #e8e0d8', marginBottom: '20px' },
-    tabBtn: (active: boolean) => ({ padding: '8px 16px', fontSize: '13px', color: active ? '#6B1414' : '#888', borderBottom: active ? '2px solid #6B1414' : '2px solid transparent', background: 'none', border: 'none', borderBottom2: active ? '2px solid #6B1414' : 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: active ? 500 : 400 }),
     wineGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' },
     wineCard: { background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '12px', padding: '14px', cursor: 'pointer', transition: 'border-color 0.15s' },
     wineThumb: { width: '100%', height: '72px', background: '#fdf2f2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px', fontSize: '28px' },
@@ -134,18 +139,14 @@ export default function WineDashboard() {
       {/* Mobile-only header */}
       <div className="wine-mobile-header" style={{ display: 'none', gridColumn: '1 / -1', background: '#1a0a0a', padding: '14px 20px', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={s.wordmark}>nd<span style={s.wordmarkSpan}>-ex</span></div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={s.avatar}>{session?.user?.name?.[0] || 'J'}</div>
-          <button onClick={() => signOut()} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Sign out</button>
-        </div>
+        <button onClick={() => router.push('/dashboard')} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>← Home</button>
       </div>
 
       <div className="wine-sidebar" style={s.sidebar}>
         <div style={s.sidebarTop}>
           <div style={s.wordmark}>nd<span style={s.wordmarkSpan}>-ex</span></div>
-          <div style={s.userRow}>
-            <div style={s.avatar}>{session?.user?.name?.[0] || 'J'}</div>
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{session?.user?.name}</span>
+          <div style={{ marginTop: '14px', fontSize: '12px', color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>
+            {getGreeting()}, Justin.
           </div>
         </div>
 
@@ -159,11 +160,11 @@ export default function WineDashboard() {
         <div style={{ ...s.navSection, borderTop: '0.5px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
           <div style={s.navLabel}>Wine</div>
           <div style={s.navItem(tab === 'cellar')} onClick={() => setTab('cellar')}>🏠 My cellar</div>
-          <div style={s.navItem(tab === 'had')} onClick={() => setTab('had')}>★ Wines I've had</div>
+          <div style={s.navItem(tab === 'had')} onClick={() => setTab('had')}>★ Wines I&apos;ve had</div>
         </div>
 
         <div style={{ marginTop: 'auto', padding: '16px 12px', borderTop: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ ...s.navItem(false) }} onClick={() => signOut()}>← Sign out</div>
+          <div style={{ ...s.navItem(false) }} onClick={() => router.push('/dashboard')}>← Dashboard</div>
         </div>
       </div>
 
@@ -189,7 +190,7 @@ export default function WineDashboard() {
         <div className="wine-tab-strip" style={{ display: 'none', borderBottom: '0.5px solid #e8e0d8', background: 'white' }}>
           {(['cellar', 'had'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: '10px 8px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', fontWeight: tab === t ? 500 : 400, color: tab === t ? '#6B1414' : '#888', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid #6B1414' : '2px solid transparent', cursor: 'pointer' }}>
-              {t === 'cellar' ? '🏠 My cellar' : '★ Wines I\'ve had'}
+              {t === 'cellar' ? '🏠 My cellar' : "★ Wines I've had"}
             </button>
           ))}
         </div>
@@ -260,10 +261,10 @@ export default function WineDashboard() {
               {had.length === 0 ? (
                 <div style={{ color: '#888', fontSize: '13px', gridColumn: '1/-1' }}>No wines logged yet.</div>
               ) : had.map(wine => (
-                <div key={wine.id} style={s.wineCard}>
+                <div key={wine.id} style={s.wineCard} onClick={() => setSelectedWine(wine)}>
                   <div style={s.wineThumb}>🍷</div>
                   <div style={{ fontSize: '13px', fontWeight: 500, color: '#1a1210', marginBottom: '3px' }}>{wine.name}</div>
-                  <div style={{ fontSize: '11px', color: '#888' }}>{wine.region} · {wine.vintage}</div>
+                  <div style={{ fontSize: '11px', color: '#888' }}>{[wine.region, wine.vintage].filter(Boolean).join(' · ')}</div>
                   {wine.myRating && (
                     <div style={{ marginTop: '8px', fontSize: '12px', color: '#6B1414', fontWeight: 500 }}>
                       {'★'.repeat(Math.round(wine.myRating / 2))} {wine.myRating}/10
@@ -357,109 +358,258 @@ export default function WineDashboard() {
   )
 }
 
+type WineForm = {
+  name: string
+  producer: string
+  vintage: string
+  region: string
+  varietal: string
+  estimatedRetailCost: string
+  notes: string
+  myRating: string
+}
+
+type ModalStep = 'method' | 'identifying' | 'form'
+
 function AddWineModal({ onClose, onAdd }: { onClose: () => void, onAdd: (w: Wine) => void }) {
-  const [mode, setMode] = useState<'cellar' | 'had'>('cellar')
-  const [form, setForm] = useState({ name: '', producer: '', vintage: '', region: '', varietal: '', score: '', notes: '', myRating: '7' })
+  const [step, setStep] = useState<ModalStep>('method')
+  const [addToCellar, setAddToCellar] = useState(true)
+  const [addToHad, setAddToHad] = useState(false)
+  const [form, setForm] = useState<WineForm>({ name: '', producer: '', vintage: '', region: '', varietal: '', estimatedRetailCost: '', notes: '', myRating: '7' })
   const [saving, setSaving] = useState(false)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
+
+  const handleImageFile = async (file: File) => {
+    setStep('identifying')
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1]
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Identify this wine from the photo. Return ONLY a valid JSON object with these exact fields, no other text: {"name":"","producer":"","vintage":null,"region":"","varietal":"","estimatedRetailCost":null}',
+            imageBase64: base64
+          })
+        })
+        const data = await res.json()
+        try {
+          const jsonMatch = data.reply.match(/\{[\s\S]*\}/)
+          const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+          setForm(f => ({
+            ...f,
+            name: parsed.name || '',
+            producer: parsed.producer || '',
+            vintage: parsed.vintage ? String(parsed.vintage) : '',
+            region: parsed.region || '',
+            varietal: parsed.varietal || '',
+            estimatedRetailCost: parsed.estimatedRetailCost ? String(parsed.estimatedRetailCost) : '',
+          }))
+        } catch {
+          // parse failed, leave form empty for manual entry
+        }
+      } catch {
+        // network error, continue to form
+      }
+      setStep('form')
+    }
+    reader.readAsDataURL(file)
+  }
 
   const submit = async () => {
     if (!form.name) return
+    if (!addToCellar && !addToHad) return
     setSaving(true)
-    const body = {
-      ...form,
+
+    const base = {
+      name: form.name,
+      producer: form.producer || undefined,
       vintage: form.vintage ? parseInt(form.vintage) : undefined,
-      score: form.score ? parseInt(form.score) : undefined,
-      myRating: mode === 'had' ? parseInt(form.myRating) : undefined,
-      status: mode === 'cellar' ? 'in_cellar' : 'consumed',
-      consumedDate: mode === 'had' ? new Date().toISOString().split('T')[0] : undefined,
+      region: form.region || undefined,
+      varietal: form.varietal || undefined,
+      estimatedRetailCost: form.estimatedRetailCost ? parseFloat(form.estimatedRetailCost) : undefined,
+      notes: form.notes || undefined,
     }
-    const res = await fetch('/api/cellar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const wine = await res.json()
-    onAdd(wine)
+
+    if (addToCellar && addToHad) {
+      const res = await fetch('/api/cellar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, status: 'in_cellar', tasted: true, myRating: parseInt(form.myRating) })
+      })
+      const wine = await res.json()
+      onAdd(wine)
+    } else if (addToCellar) {
+      const res = await fetch('/api/cellar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, status: 'in_cellar' })
+      })
+      const wine = await res.json()
+      onAdd(wine)
+    } else {
+      const res = await fetch('/api/cellar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, status: 'consumed', myRating: parseInt(form.myRating), consumedDate: new Date().toISOString().split('T')[0] })
+      })
+      const wine = await res.json()
+      onAdd(wine)
+    }
     setSaving(false)
   }
 
-  const o: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }
-  const m: React.CSSProperties = { background: 'white', borderRadius: '16px', padding: '28px', width: '440px', maxHeight: '90vh', overflowY: 'auto' }
-  const inp: React.CSSProperties = { width: '100%', border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', color: '#1a1210', background: '#fafaf8', outline: 'none', marginBottom: '10px' }
+  const overlay: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }
+  const box: React.CSSProperties = { background: 'white', borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }
+  const inp: React.CSSProperties = { width: '100%', border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', color: '#1a1210', background: '#fafaf8', outline: 'none', marginBottom: '10px', boxSizing: 'border-box' }
   const lbl: React.CSSProperties = { fontSize: '11px', color: '#888', marginBottom: '4px', display: 'block' }
 
   return (
-    <div style={o} onClick={onClose}>
-      <div style={m} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <h2 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400 }}>Add a wine</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#888' }}>×</button>
+    <div style={overlay} onClick={onClose}>
+      <div className="wine-modal-box" style={box} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, margin: 0 }}>
+            {step === 'identifying' ? 'Identifying wine...' : 'Add a wine'}
+          </h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#aaa', lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {(['cellar', 'had'] as const).map(t => (
-            <button key={t} onClick={() => setMode(t)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: mode === t ? '1.5px solid #6B1414' : '0.5px solid #e8e0d8', background: mode === t ? '#fdf2f2' : 'white', color: mode === t ? '#6B1414' : '#888', fontSize: '13px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: mode === t ? 500 : 400 }}>
-              {t === 'cellar' ? '🏠 My cellar' : '★ Wines I\'ve had'}
+        {/* Step: method selection */}
+        {step === 'method' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
+            <input ref={uploadRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
+
+            <button onClick={() => cameraRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
+              <span style={{ fontSize: '26px' }}>📷</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Take a photo</div>
+                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Use your camera to snap the label</div>
+              </div>
             </button>
-          ))}
-        </div>
 
-        <label style={lbl}>Wine name *</label>
-        <input style={inp} placeholder="e.g. Château Margaux" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            <button onClick={() => uploadRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
+              <span style={{ fontSize: '26px' }}>🖼️</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Upload a photo</div>
+                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Choose an image from your library</div>
+              </div>
+            </button>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          <div>
-            <label style={lbl}>Producer</label>
-            <input style={inp} placeholder="Producer" value={form.producer} onChange={e => setForm(f => ({ ...f, producer: e.target.value }))} />
+            <button onClick={() => setStep('form')} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
+              <span style={{ fontSize: '26px' }}>✏️</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#1a1210' }}>Add manually</div>
+                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>Fill in the details yourself</div>
+              </div>
+            </button>
           </div>
-          <div>
-            <label style={lbl}>Vintage</label>
-            <input style={inp} placeholder="2019" type="number" value={form.vintage} onChange={e => setForm(f => ({ ...f, vintage: e.target.value }))} />
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          <div>
-            <label style={lbl}>Region</label>
-            <input style={inp} placeholder="Bordeaux" value={form.region} onChange={e => setForm(f => ({ ...f, region: e.target.value }))} />
-          </div>
-          <div>
-            <label style={lbl}>Varietal</label>
-            <input style={inp} placeholder="Cab Sauvignon" value={form.varietal} onChange={e => setForm(f => ({ ...f, varietal: e.target.value }))} />
-          </div>
-        </div>
-
-        {mode === 'cellar' && (
-          <>
-            <label style={lbl}>Critic score (85–100)</label>
-            <input style={inp} placeholder="94" type="number" min="85" max="100" value={form.score} onChange={e => setForm(f => ({ ...f, score: e.target.value }))} />
-          </>
         )}
 
-        {mode === 'had' && (
-          <>
-            <label style={lbl}>My rating: {form.myRating}/10</label>
-            <input type="range" min="1" max="10" step="1" value={form.myRating} onChange={e => setForm(f => ({ ...f, myRating: e.target.value }))} style={{ width: '100%', marginBottom: '10px' }} />
-          </>
+        {/* Step: identifying */}
+        {step === 'identifying' && (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: '40px', marginBottom: '16px' }}>🍷</div>
+            <p style={{ fontSize: '14px', color: '#888' }}>Analyzing the label...</p>
+          </div>
         )}
 
-        <label style={lbl}>Notes</label>
-        <textarea style={{ ...inp, height: '70px', resize: 'none' as const }} placeholder="Tasting notes..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+        {/* Step: form */}
+        {step === 'form' && (
+          <>
+            <label style={lbl}>Wine name *</label>
+            <input style={inp} placeholder="e.g. Château Margaux" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
-        <button
-          onClick={submit}
-          disabled={!form.name || saving}
-          style={{ width: '100%', padding: '12px', background: form.name ? '#6B1414' : '#e8e0d8', color: form.name ? 'white' : '#aaa', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', fontWeight: 500, cursor: form.name ? 'pointer' : 'default', marginTop: '4px' }}
-        >
-          {saving ? 'Saving...' : mode === 'cellar' ? 'Add to my cellar' : "Add to wines I've had"}
-        </button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={lbl}>Producer</label>
+                <input style={inp} placeholder="Producer" value={form.producer} onChange={e => setForm(f => ({ ...f, producer: e.target.value }))} />
+              </div>
+              <div>
+                <label style={lbl}>Vintage</label>
+                <input style={inp} placeholder="2019" type="number" value={form.vintage} onChange={e => setForm(f => ({ ...f, vintage: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={lbl}>Region</label>
+                <input style={inp} placeholder="Bordeaux" value={form.region} onChange={e => setForm(f => ({ ...f, region: e.target.value }))} />
+              </div>
+              <div>
+                <label style={lbl}>Varietal</label>
+                <input style={inp} placeholder="Cab Sauvignon" value={form.varietal} onChange={e => setForm(f => ({ ...f, varietal: e.target.value }))} />
+              </div>
+            </div>
+
+            <label style={lbl}>Estimated retail cost ($)</label>
+            <input style={inp} placeholder="e.g. 45" type="number" min="0" value={form.estimatedRetailCost} onChange={e => setForm(f => ({ ...f, estimatedRetailCost: e.target.value }))} />
+
+            <label style={lbl}>Notes</label>
+            <textarea style={{ ...inp, height: '64px', resize: 'none' as const }} placeholder="Tasting notes..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+
+            {/* Add to destinations */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ ...lbl, marginBottom: '8px' }}>Add to</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setAddToCellar(v => !v)}
+                  style={{ flex: 1, padding: '10px 8px', borderRadius: '10px', border: addToCellar ? '1.5px solid #6B1414' : '0.5px solid #e8e0d8', background: addToCellar ? '#fdf2f2' : 'white', color: addToCellar ? '#6B1414' : '#888', fontSize: '13px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: addToCellar ? 500 : 400 }}
+                >
+                  🏠 My Cellar
+                </button>
+                <button
+                  onClick={() => setAddToHad(v => !v)}
+                  style={{ flex: 1, padding: '10px 8px', borderRadius: '10px', border: addToHad ? '1.5px solid #6B1414' : '0.5px solid #e8e0d8', background: addToHad ? '#fdf2f2' : 'white', color: addToHad ? '#6B1414' : '#888', fontSize: '13px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: addToHad ? 500 : 400 }}
+                >
+                  ★ Wines I&apos;ve Had
+                </button>
+              </div>
+              {!addToCellar && !addToHad && (
+                <p style={{ fontSize: '11px', color: '#e07', marginTop: '6px' }}>Select at least one destination.</p>
+              )}
+            </div>
+
+            {/* Rating — only shown if adding to "had" */}
+            {addToHad && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={lbl}>My rating: {form.myRating}/10</label>
+                <input
+                  type="range" min="1" max="10" step="1"
+                  value={form.myRating}
+                  onChange={e => setForm(f => ({ ...f, myRating: e.target.value }))}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#bbb', marginTop: '2px' }}>
+                  <span>1</span><span>10</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={submit}
+              disabled={!form.name || (!addToCellar && !addToHad) || saving}
+              style={{ width: '100%', padding: '12px', background: (form.name && (addToCellar || addToHad)) ? '#6B1414' : '#e8e0d8', color: (form.name && (addToCellar || addToHad)) ? 'white' : '#aaa', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', fontWeight: 500, cursor: (form.name && (addToCellar || addToHad)) ? 'pointer' : 'default', marginTop: '4px' }}
+            >
+              {saving ? 'Saving...' : 'Add wine'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
 function WineDetailModal({ wine, onClose }: { wine: Wine, onClose: () => void }) {
-  const o: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }
-  const m: React.CSSProperties = { background: 'white', borderRadius: '16px', padding: '28px', width: '400px' }
+  const o: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }
+  const m: React.CSSProperties = { background: 'white', borderRadius: '16px', padding: '28px', width: '400px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }
   return (
     <div style={o} onClick={onClose}>
-      <div style={m} onClick={e => e.stopPropagation()}>
+      <div className="wine-modal-box" style={m} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ fontSize: '36px' }}>🍷</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#888' }}>×</button>
@@ -467,10 +617,17 @@ function WineDetailModal({ wine, onClose }: { wine: Wine, onClose: () => void })
         <h2 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, marginBottom: '4px' }}>{wine.name}</h2>
         <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>{[wine.producer, wine.vintage].filter(Boolean).join(' · ')}</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-          {[['Region', wine.region], ['Varietal', wine.varietal], ['Score', wine.score ? `${wine.score} pts` : undefined], ['Drink window', wine.drinkFrom ? `${wine.drinkFrom}–${wine.drinkUntil}` : undefined]].filter(([, v]) => v).map(([k, v]) => (
-            <div key={String(k)} style={{ background: '#fdf9f6', borderRadius: '8px', padding: '10px' }}>
+          {([
+            ['Region', wine.region],
+            ['Varietal', wine.varietal],
+            ['Score', wine.score ? `${wine.score} pts` : undefined],
+            ['Est. retail', wine.estimatedRetailCost ? `$${wine.estimatedRetailCost}` : undefined],
+            ['Drink window', wine.drinkFrom ? `${wine.drinkFrom}–${wine.drinkUntil}` : undefined],
+            ['My rating', wine.myRating ? `${wine.myRating}/10` : undefined],
+          ] as [string, string | undefined][]).filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={{ background: '#fdf9f6', borderRadius: '8px', padding: '10px' }}>
               <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>{k}</div>
-              <div style={{ fontSize: '13px', fontWeight: 500, color: '#1a1210' }}>{String(v)}</div>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: '#1a1210' }}>{v}</div>
             </div>
           ))}
         </div>
