@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { neon } from '@neondatabase/serverless'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
+const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
 
 async function getCellarContext(): Promise<string> {
   try {
@@ -28,23 +29,40 @@ async function getCellarContext(): Promise<string> {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+async function chatViaOpenClaw(message: string, imageBase64?: string): Promise<string> {
+  const body: Record<string, unknown> = {
+    agentId: 'vino',
+    message,
+    sessionId: 'web-cellar',
+  }
+  if (imageBase64) {
+    body.attachments = [{ type: 'image', data: imageBase64 }]
+  }
+  const res = await fetch(`${GATEWAY}/api/agent/message`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!res.ok) throw new Error(`OpenClaw ${res.status}`)
+  const data = await res.json()
+  return data.message || data.content || data.reply || 'No response'
+}
 
-  const { message, imageBase64, mimeType = 'image/jpeg' } = await req.json()
-
+async function chatViaClaude(message: string, imageBase64?: string, mimeType = 'image/jpeg'): Promise<string> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
   const cellarContext = await getCellarContext()
-
-  const system = `You are Vino, a knowledgeable and warm sommelier assistant for Justin. You help him manage his wine cellar, suggest food pairings, identify wines from photos, and answer wine questions.
+  const system = `You are Vino, a knowledgeable sommelier assistant for Justin. You help manage his wine cellar, suggest pairings, and answer wine questions.
 
 Justin's current cellar:
 ${cellarContext}
 
-Be concise and conversational. When asked about his wines, refer to the list above. For pairings, be specific and practical.`
+Be concise and warm.`
 
   const content: Anthropic.ContentBlockParam[] = []
-
   if (imageBase64) {
     content.push({
       type: 'image',
@@ -55,7 +73,6 @@ Be concise and conversational. When asked about his wines, refer to the list abo
       },
     })
   }
-
   content.push({ type: 'text', text: message })
 
   const response = await client.messages.create({
@@ -64,7 +81,22 @@ Be concise and conversational. When asked about his wines, refer to the list abo
     system,
     messages: [{ role: 'user', content }],
   })
+  return response.content[0].type === 'text' ? response.content[0].text : 'No response'
+}
 
-  const reply = response.content[0].type === 'text' ? response.content[0].text : 'No response'
-  return NextResponse.json({ reply })
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { message, imageBase64, mimeType } = await req.json()
+
+  // Try OpenClaw first, fall back to direct Claude if unavailable
+  try {
+    const reply = await chatViaOpenClaw(message, imageBase64)
+    return NextResponse.json({ reply, source: 'openclaw' })
+  } catch (err) {
+    console.warn('OpenClaw unavailable, falling back to Claude:', err)
+    const reply = await chatViaClaude(message, imageBase64, mimeType)
+    return NextResponse.json({ reply, source: 'claude' })
+  }
 }
