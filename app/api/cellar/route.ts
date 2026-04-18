@@ -5,7 +5,7 @@ import { neon } from '@neondatabase/serverless'
 
 const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
 const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
-const CELLAR_MD_PATH = '/home/openclaw/.openclaw/agents/wine/CELLAR.md'
+const USER_MD_PATH = process.env.OPENCLAW_USER_MD_PATH || 'USER.md'
 
 function getDb() {
   return neon(process.env.DATABASE_URL!)
@@ -91,12 +91,18 @@ ${had.length === 0 ? '_None logged_' : had.map(wineRow).join('\n')}
 async function syncToOpenClaw(wines: ReturnType<typeof rowToWine>[]) {
   try {
     const content = buildCellarMarkdown(wines)
-    await fetch(`${GATEWAY}/api/workspace/file`, {
+    const res = await fetch(`${GATEWAY}/api/workspace/file`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: 'vino', path: CELLAR_MD_PATH, action: 'write', content }),
+      body: JSON.stringify({ agentId: 'vino', path: USER_MD_PATH, action: 'write', content }),
       signal: AbortSignal.timeout(8000),
     })
+    if (!res.ok) {
+      const text = await res.text()
+      console.warn('OpenClaw sync HTTP error:', res.status, text)
+    } else {
+      console.log('OpenClaw sync ok:', res.status)
+    }
   } catch (err) {
     console.warn('OpenClaw sync failed (non-fatal):', err)
   }

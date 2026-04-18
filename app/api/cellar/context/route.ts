@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { neon } from '@neondatabase/serverless'
 
-const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
-const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
-// Try relative path first (OpenClaw resolves relative to agent workspace)
-// Absolute fallback: /home/openclaw/.openclaw/agents/wine/USER.md
-const USER_MD_PATH = process.env.OPENCLAW_USER_MD_PATH || 'USER.md'
+const CONTEXT_SECRET = process.env.CELLAR_CONTEXT_SECRET!
 
-export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET(req: NextRequest) {
+  const auth = req.headers.get('authorization')
+  if (!auth || auth !== `Bearer ${CONTEXT_SECRET}`) {
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
 
   const sql = neon(process.env.DATABASE_URL!)
   const rows = await sql`SELECT * FROM wines ORDER BY added_date DESC`
@@ -25,6 +21,7 @@ export async function POST(req: NextRequest) {
     const extras = [
       r.score ? `critic score: ${r.score}` : null,
       r.estimated_retail_cost ? `est. $${r.estimated_retail_cost}` : null,
+      r.drink_from ? `drink ${r.drink_from}–${r.drink_until ?? '?'}` : null,
       r.my_rating ? `my rating: ${r.my_rating}/10` : null,
       r.notes ? `notes: ${r.notes}` : null,
     ].filter(Boolean).join(' · ')
@@ -47,16 +44,7 @@ ${cellar.length === 0 ? '_Empty_' : cellar.map(wineRow).join('\n')}
 ${had.length === 0 ? '_None logged_' : had.map(wineRow).join('\n')}
 `
 
-  const res = await fetch(`${GATEWAY}/api/workspace/file`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agentId: 'vino', path: USER_MD_PATH, action: 'write', content }),
+  return new NextResponse(content, {
+    headers: { 'Content-Type': 'text/plain' },
   })
-
-  const responseText = await res.text()
-  if (!res.ok) {
-    return NextResponse.json({ error: 'OpenClaw sync failed', status: res.status, detail: responseText }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true, wines: rows.length, synced: now, openclaw: responseText })
 }
