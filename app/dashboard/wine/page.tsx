@@ -130,8 +130,17 @@ export default function WineDashboard() {
   }
 
   return (
-    <div style={s.shell}>
-      <div style={s.sidebar}>
+    <div className="wine-shell" style={s.shell}>
+      {/* Mobile-only header */}
+      <div className="wine-mobile-header" style={{ display: 'none', gridColumn: '1 / -1', background: '#1a0a0a', padding: '14px 20px', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={s.wordmark}>nd<span style={s.wordmarkSpan}>-ex</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={s.avatar}>{session?.user?.name?.[0] || 'J'}</div>
+          <button onClick={() => signOut()} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Sign out</button>
+        </div>
+      </div>
+
+      <div className="wine-sidebar" style={s.sidebar}>
         <div style={s.sidebarTop}>
           <div style={s.wordmark}>nd<span style={s.wordmarkSpan}>-ex</span></div>
           <div style={s.userRow}>
@@ -159,7 +168,7 @@ export default function WineDashboard() {
       </div>
 
       <div style={s.main}>
-        <div style={s.topbar}>
+        <div className="wine-topbar" style={s.topbar}>
           <div>
             <h1 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, color: '#1a1210' }}>
               {tab === 'cellar' ? 'My cellar' : "Wines I've had"}
@@ -176,10 +185,19 @@ export default function WineDashboard() {
           </button>
         </div>
 
-        <div style={s.content}>
+        {/* Mobile-only tab strip */}
+        <div className="wine-tab-strip" style={{ display: 'none', borderBottom: '0.5px solid #e8e0d8', background: 'white' }}>
+          {(['cellar', 'had'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: '10px 8px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', fontWeight: tab === t ? 500 : 400, color: tab === t ? '#6B1414' : '#888', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid #6B1414' : '2px solid transparent', cursor: 'pointer' }}>
+              {t === 'cellar' ? '🏠 My cellar' : '★ Wines I\'ve had'}
+            </button>
+          ))}
+        </div>
+
+        <div className="wine-content" style={s.content}>
           {tab === 'cellar' && (
             <>
-              <div style={s.statGrid}>
+              <div className="wine-stat-grid" style={s.statGrid}>
                 <div style={s.stat}>
                   <div style={s.statLabel}>Total bottles</div>
                   <div style={s.statValue}>{cellar.length}</div>
@@ -202,7 +220,7 @@ export default function WineDashboard() {
                 </div>
               </div>
 
-              <div style={s.wineGrid}>
+              <div className="wine-card-grid" style={s.wineGrid}>
                 {loading ? (
                   <div style={{ color: '#888', fontSize: '13px', gridColumn: '1/-1', padding: '20px 0' }}>Loading your cellar...</div>
                 ) : cellar.length === 0 ? (
@@ -238,7 +256,7 @@ export default function WineDashboard() {
           )}
 
           {tab === 'had' && (
-            <div style={s.wineGrid}>
+            <div className="wine-card-grid" style={s.wineGrid}>
               {had.length === 0 ? (
                 <div style={{ color: '#888', fontSize: '13px', gridColumn: '1/-1' }}>No wines logged yet.</div>
               ) : had.map(wine => (
@@ -257,7 +275,7 @@ export default function WineDashboard() {
           )}
         </div>
 
-        <div style={s.chatArea}>
+        <div className="wine-chat" style={s.chatArea}>
           <div style={{ padding: '8px 20px', borderBottom: '0.5px solid #e8e0d8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 500, color: '#6B1414' }}>Vino</span>
             <span style={{ fontSize: '11px', color: '#aaa' }}>your sommelier</span>
@@ -308,6 +326,7 @@ export default function WineDashboard() {
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder="Ask Vino about your cellar..."
+              className="wine-chat-input"
               style={{ flex: 1, border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', background: '#fafaf8', outline: 'none', color: '#1a1210' }}
             />
             <button
