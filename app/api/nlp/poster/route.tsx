@@ -100,7 +100,18 @@ export async function GET(req: NextRequest) {
 
   const weekLabel = `${MONTHS[monday.getUTCMonth()]} ${monday.getUTCDate()} – ${MONTHS[weekDays[6].getUTCMonth()]} ${weekDays[6].getUTCDate()}, ${monday.getUTCFullYear()}`
 
-  const HEADER_H = 210
+  // Try to load the venue logo
+  const base = process.env.NEXTAUTH_URL || 'https://www.nd-ex.com'
+  let logoData: string | null = null
+  try {
+    const logoRes = await fetch(`${base}/nlp-logo.png`, { signal: AbortSignal.timeout(3000) })
+    if (logoRes.ok) {
+      const buf = await logoRes.arrayBuffer()
+      logoData = `data:image/png;base64,${Buffer.from(buf).toString('base64')}`
+    }
+  } catch { /* no logo */ }
+
+  const HEADER_H = logoData ? 230 : 210
   const FOOTER_H = 52
   const BODY_H = 1080 - HEADER_H - FOOTER_H
   const rowH = showCount > 0 ? Math.floor(BODY_H / showCount) : BODY_H
@@ -122,22 +133,28 @@ export async function GET(req: NextRequest) {
       <div style={{ width: 1080, height: 1080, background: '#060606', display: 'flex', flexDirection: 'column' }}>
 
         {/* HEADER */}
-        <div style={{ height: HEADER_H, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #111' }}>
-          <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 16, display: 'flex' }}>
-            ◆  COMING UP AT  ◆
-          </div>
-          <div style={{ fontSize: 88, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
-            NIKKI LOPEZ
-          </div>
-          <div style={{ fontSize: 15, color: '#333', letterSpacing: '0.7em', marginTop: 10, display: 'flex' }}>
-            P H I L L Y
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
-            <div style={{ width: 30, height: 1, background: '#222', display: 'flex' }} />
-            <div style={{ fontSize: 11, color: '#444', letterSpacing: '0.2em', padding: '0 16px', display: 'flex' }}>
+        <div style={{ height: HEADER_H, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #1a1a1a' }}>
+          {logoData ? (
+            <img src={logoData} alt="Nikki Lopez" width={320} height={140} style={{ width: 320, height: 140, objectFit: 'contain', marginBottom: 12 }} />
+          ) : (
+            <>
+              <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 14, display: 'flex' }}>
+                ◆  COMING UP AT  ◆
+              </div>
+              <div style={{ fontSize: 82, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
+                NIKKI LOPEZ
+              </div>
+              <div style={{ fontSize: 13, color: '#666', letterSpacing: '0.7em', marginTop: 8, display: 'flex' }}>
+                SOUTH STREET PHILLY
+              </div>
+            </>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: 16 }}>
+            <div style={{ width: 28, height: 1, background: '#333', display: 'flex' }} />
+            <div style={{ fontSize: 11, color: '#888', letterSpacing: '0.22em', padding: '0 14px', display: 'flex' }}>
               {weekLabel}
             </div>
-            <div style={{ width: 30, height: 1, background: '#222', display: 'flex' }} />
+            <div style={{ width: 28, height: 1, background: '#333', display: 'flex' }} />
           </div>
         </div>
 
@@ -159,13 +176,13 @@ export async function GET(req: NextRequest) {
 
                 {/* Day block */}
                 <div style={{ width: 90, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 20 }}>
-                  <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
-                  <div style={{ fontSize: 42, fontWeight: 900, color: '#ddd', lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
-                  <div style={{ fontSize: 9, color: '#333', letterSpacing: '0.15em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
+                  <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
+                  <div style={{ fontSize: 42, fontWeight: 900, color: '#ffffff', lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
+                  <div style={{ fontSize: 9, color: '#666', letterSpacing: '0.15em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
                 </div>
 
                 {/* Separator */}
-                <div style={{ width: 1, height: rowH * 0.45, background: '#181818', marginLeft: 18, flexShrink: 0, display: 'flex' }} />
+                <div style={{ width: 1, height: rowH * 0.45, background: '#2a2a2a', marginLeft: 18, flexShrink: 0, display: 'flex' }} />
 
                 {/* Artist name + genre */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 24, paddingRight: 20 }}>
@@ -193,8 +210,8 @@ export async function GET(req: NextRequest) {
         </div>
 
         {/* FOOTER */}
-        <div style={{ height: FOOTER_H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #0f0f0f' }}>
-          <div style={{ fontSize: 10, color: '#2a2a2a', letterSpacing: '0.4em', display: 'flex' }}>
+        <div style={{ height: FOOTER_H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #1a1a1a' }}>
+          <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.4em', display: 'flex' }}>
             NIKKITLOPEZPHILLY.COM
           </div>
         </div>

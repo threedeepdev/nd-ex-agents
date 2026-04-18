@@ -56,6 +56,7 @@ export default function NLPPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [addDefaultDate, setAddDefaultDate] = useState<string | null>(null)
   const [posterKeys, setPosterKeys] = useState({ this: 0, next: 0 })
+  const [posterModal, setPosterModal] = useState<{ week: string; label: string } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
 
@@ -209,11 +210,15 @@ export default function NLPPage() {
 
           {/* Posters */}
           <div className="nlp-poster-panel" style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <PosterCard label="This Week" week={thisMonday} posterKey={posterKeys.this} onRefresh={() => setPosterKeys(k => ({ ...k, this: k.this + 1 }))} />
-            <PosterCard label="Next Week" week={nextMonday} posterKey={posterKeys.next} onRefresh={() => setPosterKeys(k => ({ ...k, next: k.next + 1 }))} />
+            <PosterCard label="This Week" week={thisMonday} posterKey={posterKeys.this} onRefresh={() => setPosterKeys(k => ({ ...k, this: k.this + 1 }))} onTap={() => setPosterModal({ week: thisMonday, label: 'This Week' })} />
+            <PosterCard label="Next Week" week={nextMonday} posterKey={posterKeys.next} onRefresh={() => setPosterKeys(k => ({ ...k, next: k.next + 1 }))} onTap={() => setPosterModal({ week: nextMonday, label: 'Next Week' })} />
           </div>
         </div>
       </div>
+
+      {posterModal && (
+        <PosterModal week={posterModal.week} label={posterModal.label} onClose={() => setPosterModal(null)} />
+      )}
 
       {showAddModal && (
         <AddShowModal
@@ -278,18 +283,66 @@ function WeekSection({ label, dateRange, shows, loading, onDelete, onAdd }: {
   )
 }
 
-function PosterCard({ label, week, posterKey, onRefresh }: { label: string; week: string; posterKey: number; onRefresh: () => void }) {
+function PosterCard({ label, week, posterKey, onRefresh, onTap }: { label: string; week: string; posterKey: number; onRefresh: () => void; onTap: () => void }) {
   const posterUrl = `/api/nlp/poster?week=${week}`
   return (
     <div style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '12px', overflow: 'hidden' }}>
       <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #f0e8e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '11px', fontWeight: 500, color: '#555' }}>{label}</span>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <button onClick={onRefresh} style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }} title="Refresh">↺</button>
-          <a href={posterUrl} download={`nlp-${week}.png`} target="_blank" rel="noreferrer" style={{ fontSize: '11px', padding: '3px 8px', background: '#c0392b', color: 'white', borderRadius: '5px', textDecoration: 'none' }}>↓</a>
+        <button onClick={onRefresh} style={{ fontSize: '13px', color: '#bbb', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }} title="Refresh">↺</button>
+      </div>
+      <div onClick={onTap} style={{ cursor: 'pointer', position: 'relative' }}>
+        <img key={posterKey} src={posterUrl} alt={`${label} poster`} style={{ width: '100%', display: 'block' }} />
+        <div style={{ position: 'absolute', bottom: '8px', left: 0, right: 0, textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontFamily: 'DM Sans, sans-serif', pointerEvents: 'none' }}>
+          Tap to save
         </div>
       </div>
-      <img key={posterKey} src={posterUrl} alt={`${label} poster`} style={{ width: '100%', display: 'block' }} />
+    </div>
+  )
+}
+
+function PosterModal({ week, label, onClose }: { week: string; label: string; onClose: () => void }) {
+  const posterUrl = `/api/nlp/poster?week=${week}`
+
+  const share = async () => {
+    try {
+      const res = await fetch(posterUrl)
+      const blob = await res.blob()
+      const file = new File([blob], `nlp-${week}.png`, { type: 'image/png' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `Nikki Lopez — ${label}` })
+        return
+      }
+    } catch { /* fall through */ }
+    // fallback: open in new tab so user can long-press
+    window.open(posterUrl, '_blank')
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', maxWidth: '500px', width: '100%' }}>
+        <img src={posterUrl} alt={`${label} poster`} style={{ width: '100%', borderRadius: '8px', display: 'block' }} />
+        <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+          <button
+            onClick={share}
+            style={{ flex: 1, padding: '13px', background: '#c0392b', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', fontWeight: 500, cursor: 'pointer' }}
+          >
+            Save / Share
+          </button>
+          <button
+            onClick={onClose}
+            style={{ padding: '13px 18px', background: 'rgba(255,255,255,0.08)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', cursor: 'pointer' }}
+          >
+            Close
+          </button>
+        </div>
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
+          On iPhone: tap Save / Share → Save Image
+        </div>
+      </div>
     </div>
   )
 }
