@@ -22,6 +22,7 @@ type Wine = {
   tasted?: boolean
   consumedDate?: string
   myRating?: number
+  imageUrl?: string
 }
 
 type Tab = 'cellar' | 'had'
@@ -65,7 +66,6 @@ export default function WineDashboard() {
 
   const cellar = wines.filter(w => w.status === 'in_cellar')
   const had = wines.filter(w => w.status === 'consumed' || (w.status === 'in_cellar' && w.tasted))
-  const readyNow = cellar.filter(w => w.drinkFrom && w.drinkFrom <= new Date().getFullYear())
 
   const sendChat = async () => {
     if (!chatInput.trim()) return
@@ -191,29 +191,6 @@ export default function WineDashboard() {
         <div className="wine-content" style={s.content}>
           {tab === 'cellar' && (
             <>
-              <div className="wine-stat-grid" style={s.statGrid}>
-                <div style={s.stat}>
-                  <div style={s.statLabel}>Total bottles</div>
-                  <div style={s.statValue}>{cellar.length}</div>
-                </div>
-                <div style={s.stat}>
-                  <div style={s.statLabel}>Ready to drink</div>
-                  <div style={{ ...s.statValue, color: '#0F6E56' }}>{readyNow.length}</div>
-                </div>
-                <div style={s.stat}>
-                  <div style={s.statLabel}>Avg score</div>
-                  <div style={s.statValue}>
-                    {cellar.filter(w => w.score).length > 0
-                      ? Math.round(cellar.filter(w => w.score).reduce((a, w) => a + (w.score || 0), 0) / cellar.filter(w => w.score).length)
-                      : '—'}
-                  </div>
-                </div>
-                <div style={s.stat}>
-                  <div style={s.statLabel}>Regions</div>
-                  <div style={s.statValue}>{new Set(cellar.map(w => w.region).filter(Boolean)).size || '—'}</div>
-                </div>
-              </div>
-
               <div className="wine-card-grid" style={s.wineGrid}>
                 {loading ? (
                   <div style={{ color: '#888', fontSize: '13px', gridColumn: '1/-1', padding: '20px 0' }}>Loading your cellar...</div>
@@ -223,7 +200,11 @@ export default function WineDashboard() {
                   </div>
                 ) : cellar.map(wine => (
                   <div key={wine.id} style={s.wineCard} onClick={() => setSelectedWine(wine)}>
-                    <div style={s.wineThumb}>🍷</div>
+                    <div style={s.wineThumb}>
+                      {wine.imageUrl
+                        ? <img src={wine.imageUrl} alt={wine.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }} />
+                        : <span style={{ fontSize: '28px' }}>🍷</span>}
+                    </div>
                     <div style={{ fontSize: '13px', fontWeight: 500, color: '#1a1210', marginBottom: '3px' }}>{wine.name}</div>
                     <div style={{ fontSize: '11px', color: '#888' }}>{[wine.region, wine.vintage].filter(Boolean).join(' · ')}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '0.5px solid #f0e8e0' }}>
@@ -587,7 +568,11 @@ function WineDetailModal({ wine, onClose }: { wine: Wine, onClose: () => void })
     <div style={o} onClick={onClose}>
       <div className="wine-modal-box" style={m} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ fontSize: '36px' }}>🍷</div>
+          <div style={{ width: '56px', height: '72px', borderRadius: '8px', overflow: 'hidden', background: '#fdf2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {wine.imageUrl
+              ? <img src={wine.imageUrl} alt={wine.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: '32px' }}>🍷</span>}
+          </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#888' }}>×</button>
         </div>
         <h2 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, marginBottom: '4px' }}>{wine.name}</h2>

@@ -32,9 +32,12 @@ async function ensureTable() {
       status      TEXT NOT NULL DEFAULT 'in_cellar',
       tasted      BOOLEAN DEFAULT FALSE,
       consumed_date TEXT,
-      my_rating   INTEGER
+      my_rating   INTEGER,
+      image_url   TEXT
     )
   `
+  // Add image_url to existing tables that predate this column
+  await sql`ALTER TABLE wines ADD COLUMN IF NOT EXISTS image_url TEXT`
 }
 
 function rowToWine(row: Record<string, unknown>) {
@@ -57,6 +60,7 @@ function rowToWine(row: Record<string, unknown>) {
     tasted: row.tasted ?? undefined,
     consumedDate: row.consumed_date ?? undefined,
     myRating: row.my_rating ?? undefined,
+    imageUrl: row.image_url ?? undefined,
   }
 }
 
@@ -108,6 +112,22 @@ async function syncToOpenClaw(wines: ReturnType<typeof rowToWine>[]) {
   }
 }
 
+async function fetchAndStoreImage(sql: ReturnType<typeof getDb>, id: string, name: string, producer?: string, vintage?: number) {
+  try {
+    const params = new URLSearchParams({ name: name || '' })
+    if (producer) params.set('producer', producer)
+    if (vintage) params.set('vintage', String(vintage))
+    const base = process.env.NEXTAUTH_URL || 'https://www.nd-ex.com'
+    const res = await fetch(`${base}/api/wine-image?${params}`, { signal: AbortSignal.timeout(10000) })
+    if (res.ok) {
+      const { url } = await res.json()
+      if (url) await sql`UPDATE wines SET image_url = ${url} WHERE id = ${id}`
+    }
+  } catch (err) {
+    console.warn('Wine image fetch failed (non-fatal):', err)
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -148,9 +168,10 @@ export async function POST(req: NextRequest) {
 
   const newWine = { ...wine, id, addedDate, status: wine.status ?? 'in_cellar' }
 
-  // Sync full cellar to OpenClaw workspace so Telegram bot stays in sync
+  // Fetch wine image and sync to OpenClaw — both fire-and-forget
   const allRows = await sql`SELECT * FROM wines ORDER BY added_date DESC`
-  syncToOpenClaw(allRows.map(rowToWine)) // fire-and-forget, non-blocking
+  syncToOpenClaw(allRows.map(rowToWine))
+  fetchAndStoreImage(sql, id, wine.name, wine.producer, wine.vintage)
 
   return NextResponse.json(newWine)
 }
