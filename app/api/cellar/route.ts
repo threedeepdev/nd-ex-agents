@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { neon } from '@neondatabase/serverless'
 
+const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
+const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
+const CELLAR_MD_PATH = '/home/openclaw/.openclaw/agents/wine/CELLAR.md'
+
 function getDb() {
   return neon(process.env.DATABASE_URL!)
 }
@@ -56,6 +60,48 @@ function rowToWine(row: Record<string, unknown>) {
   }
 }
 
+function buildCellarMarkdown(wines: ReturnType<typeof rowToWine>[]): string {
+  const cellar = wines.filter(w => w.status === 'in_cellar')
+  const had = wines.filter(w => w.status === 'consumed' || (w.status === 'in_cellar' && w.tasted))
+  const now = new Date().toISOString().split('T')[0]
+
+  const wineRow = (w: ReturnType<typeof rowToWine>) => {
+    const parts = [w.name, w.producer, w.vintage, w.region, w.varietal].filter(Boolean).join(', ')
+    const extras = [
+      w.score ? `critic score: ${w.score}` : null,
+      w.estimatedRetailCost ? `est. $${w.estimatedRetailCost}` : null,
+      w.drinkFrom ? `drink ${w.drinkFrom}–${w.drinkUntil ?? '?'}` : null,
+      w.myRating ? `my rating: ${w.myRating}/10` : null,
+      w.notes ? `notes: ${w.notes}` : null,
+    ].filter(Boolean).join(' · ')
+    return `- ${parts}${extras ? ` (${extras})` : ''}`
+  }
+
+  return `# Justin's Wine Cellar
+Last synced: ${now}
+
+## In Cellar (${cellar.length} bottle${cellar.length !== 1 ? 's' : ''})
+${cellar.length === 0 ? '_Empty_' : cellar.map(wineRow).join('\n')}
+
+## Wines I've Had (${had.length})
+${had.length === 0 ? '_None logged_' : had.map(wineRow).join('\n')}
+`
+}
+
+async function syncToOpenClaw(wines: ReturnType<typeof rowToWine>[]) {
+  try {
+    const content = buildCellarMarkdown(wines)
+    await fetch(`${GATEWAY}/api/workspace/file`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'vino', path: CELLAR_MD_PATH, action: 'write', content }),
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch (err) {
+    console.warn('OpenClaw sync failed (non-fatal):', err)
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -94,5 +140,11 @@ export async function POST(req: NextRequest) {
     )
   `
 
-  return NextResponse.json({ ...wine, id, addedDate, status: wine.status ?? 'in_cellar' })
+  const newWine = { ...wine, id, addedDate, status: wine.status ?? 'in_cellar' }
+
+  // Sync full cellar to OpenClaw workspace so Telegram bot stays in sync
+  const allRows = await sql`SELECT * FROM wines ORDER BY added_date DESC`
+  syncToOpenClaw(allRows.map(rowToWine)) // fire-and-forget, non-blocking
+
+  return NextResponse.json(newWine)
 }
