@@ -19,9 +19,9 @@ function genreColor(genre?: string): string {
   const g = genre.toLowerCase()
   if (g.includes('metal') || g.includes('punk')) return '#e74c3c'
   if (g.includes('rock')) return '#e8643c'
-  if (g.includes('electronic') || g.includes('dance') || g.includes('edm') || g.includes('techno')) return '#00bcd4'
+  if (g.includes('electronic') || g.includes('dance') || g.includes('edm')) return '#00bcd4'
   if (g.includes('hip') || g.includes('rap')) return '#f39c12'
-  if (g.includes('r&b') || g.includes('soul') || g.includes('funk')) return '#ff9800'
+  if (g.includes('r&b') || g.includes('soul')) return '#ff9800'
   if (g.includes('alternative') || g.includes('indie')) return '#ab47bc'
   if (g.includes('jazz') || g.includes('blues')) return '#42a5f5'
   if (g.includes('country') || g.includes('folk')) return '#8bc34a'
@@ -39,7 +39,6 @@ async function getSpotifyToken(): Promise<string | null> {
       method: 'POST',
       headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=client_credentials',
-      signal: AbortSignal.timeout(5000),
     })
     const data = await res.json()
     return data.access_token || null
@@ -51,7 +50,7 @@ async function getArtistImage(token: string, rawName: string): Promise<string | 
     const primary = rawName.split(/[,·]/)[0].trim()
     const res = await fetch(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(primary)}&type=artist&limit=1`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) }
+      { headers: { Authorization: `Bearer ${token}` } }
     )
     const data = await res.json()
     const imgs = data.artists?.items?.[0]?.images
@@ -92,7 +91,7 @@ export async function GET(req: NextRequest) {
 
   const spotifyToken = await getSpotifyToken()
   const images: Record<string, string | null> = {}
-  if (spotifyToken) {
+  if (spotifyToken && showCount > 0) {
     await Promise.all(showDays.map(async d => {
       const ds = d.toISOString().split('T')[0]
       images[ds] = await getArtistImage(spotifyToken, byDate[ds].artists[0])
@@ -101,99 +100,81 @@ export async function GET(req: NextRequest) {
 
   const weekLabel = `${MONTHS[monday.getUTCMonth()]} ${monday.getUTCDate()} – ${MONTHS[weekDays[6].getUTCMonth()]} ${weekDays[6].getUTCDate()}, ${monday.getUTCFullYear()}`
 
-  const HEADER_H = 220
-  const FOOTER_H = 56
+  const HEADER_H = 210
+  const FOOTER_H = 52
   const BODY_H = 1080 - HEADER_H - FOOTER_H
   const rowH = showCount > 0 ? Math.floor(BODY_H / showCount) : BODY_H
-  const imgSize = Math.min(rowH - 24, 180)
+  const imgSize = Math.min(rowH - 20, 160)
+
+  // Build show rows for days that have shows
+  const showRows = weekDays
+    .map(day => {
+      const ds = day.toISOString().split('T')[0]
+      const show = byDate[ds]
+      if (!show) return null
+      const dayIdx = day.getUTCDay() === 0 ? 6 : day.getUTCDay() - 1
+      return { ds, day, show, dayIdx, color: genreColor(show.genre), img: images[ds] || null }
+    })
+    .filter(Boolean) as Array<{ ds: string; day: Date; show: ShowEntry; dayIdx: number; color: string; img: string | null }>
 
   return new ImageResponse(
     (
       <div style={{ width: 1080, height: 1080, background: '#060606', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Corner marks */}
-        {(['tl','tr','bl','br'] as const).map(pos => (
-          <div key={pos} style={{
-            position: 'absolute',
-            top: pos.startsWith('t') ? 18 : undefined,
-            bottom: pos.startsWith('b') ? 18 : undefined,
-            left: pos.endsWith('l') ? 18 : undefined,
-            right: pos.endsWith('r') ? 18 : undefined,
-            width: 22, height: 22,
-            borderTop: pos.startsWith('t') ? '1.5px solid rgba(192,57,43,0.45)' : undefined,
-            borderBottom: pos.startsWith('b') ? '1.5px solid rgba(192,57,43,0.45)' : undefined,
-            borderLeft: pos.endsWith('l') ? '1.5px solid rgba(192,57,43,0.45)' : undefined,
-            borderRight: pos.endsWith('r') ? '1.5px solid rgba(192,57,43,0.45)' : undefined,
-            display: 'flex',
-          }} />
-        ))}
-
         {/* HEADER */}
-        <div style={{ height: HEADER_H, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 14, display: 'flex' }}>
-            ◆ COMING UP AT ◆
+        <div style={{ height: HEADER_H, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #111' }}>
+          <div style={{ fontSize: 11, color: '#c0392b', letterSpacing: '0.5em', marginBottom: 16, display: 'flex' }}>
+            ◆  COMING UP AT  ◆
           </div>
-          <div style={{ fontSize: 86, fontWeight: 900, color: 'white', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
+          <div style={{ fontSize: 88, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex' }}>
             NIKKI LOPEZ
           </div>
-          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.65em', marginTop: 8, display: 'flex' }}>
+          <div style={{ fontSize: 15, color: '#333', letterSpacing: '0.7em', marginTop: 10, display: 'flex' }}>
             P H I L L Y
           </div>
           <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
-            <div style={{ width: 28, height: 1, background: 'rgba(192,57,43,0.35)', display: 'flex' }} />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.22em', padding: '0 14px', display: 'flex' }}>
+            <div style={{ width: 30, height: 1, background: '#222', display: 'flex' }} />
+            <div style={{ fontSize: 11, color: '#444', letterSpacing: '0.2em', padding: '0 16px', display: 'flex' }}>
               {weekLabel}
             </div>
-            <div style={{ width: 28, height: 1, background: 'rgba(192,57,43,0.35)', display: 'flex' }} />
+            <div style={{ width: 30, height: 1, background: '#222', display: 'flex' }} />
           </div>
         </div>
-
-        {/* Divider */}
-        <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,0.05)', display: 'flex' }} />
 
         {/* SHOW ROWS */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {showCount === 0 ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: 'rgba(255,255,255,0.12)', letterSpacing: '0.3em' }}>
-              NO SHOWS SCHEDULED
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontSize: 18, color: '#222', letterSpacing: '0.3em', display: 'flex' }}>NO SHOWS SCHEDULED</div>
             </div>
-          ) : weekDays.map((day) => {
-            const ds = day.toISOString().split('T')[0]
-            const show = byDate[ds]
-            if (!show) return null
-
-            const color = genreColor(show.genre)
-            const img = images[ds]
+          ) : showRows.map(({ ds, day, show, dayIdx, color, img }) => {
             const artistLine = show.artists.join('  ·  ')
             const nameSize = artistLine.length > 50 ? 30 : artistLine.length > 35 ? 38 : artistLine.length > 22 ? 46 : 58
-            const dayIdx = day.getUTCDay() === 0 ? 6 : day.getUTCDay() - 1
 
             return (
-              <div key={ds} style={{ height: rowH, display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div key={ds} style={{ height: rowH, display: 'flex', flexDirection: 'row', alignItems: 'center', borderBottom: '1px solid #0f0f0f', background: '#080808' }}>
+
                 {/* Color bar */}
-                <div style={{ width: 5, height: rowH, background: color, flexShrink: 0, display: 'flex' }} />
+                <div style={{ width: 4, height: rowH, background: color, flexShrink: 0, display: 'flex' }} />
 
-                {/* Tinted bg strip */}
-                <div style={{ position: 'absolute', left: 5, width: 400, height: rowH, background: color, opacity: 0.04, display: 'flex' }} />
-
-                {/* Day */}
-                <div style={{ width: 96, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 18 }}>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
-                  <div style={{ fontSize: 44, fontWeight: 900, color: 'rgba(255,255,255,0.88)', lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.18)', letterSpacing: '0.15em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
+                {/* Day block */}
+                <div style={{ width: 90, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 20 }}>
+                  <div style={{ fontSize: 10, color: '#444', letterSpacing: '0.2em', display: 'flex' }}>{DAYS[dayIdx]}</div>
+                  <div style={{ fontSize: 42, fontWeight: 900, color: '#ddd', lineHeight: 1, display: 'flex' }}>{day.getUTCDate()}</div>
+                  <div style={{ fontSize: 9, color: '#333', letterSpacing: '0.15em', display: 'flex' }}>{MONTHS[day.getUTCMonth()]}</div>
                 </div>
 
-                {/* Rule */}
-                <div style={{ width: 1, height: rowH * 0.5, background: 'rgba(255,255,255,0.06)', marginLeft: 16, flexShrink: 0, display: 'flex' }} />
+                {/* Separator */}
+                <div style={{ width: 1, height: rowH * 0.45, background: '#181818', marginLeft: 18, flexShrink: 0, display: 'flex' }} />
 
-                {/* Artist info */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 26, paddingRight: 20 }}>
-                  <div style={{ fontSize: nameSize, fontWeight: 900, color: 'white', letterSpacing: '-0.015em', lineHeight: 1.08, display: 'flex', flexWrap: 'wrap' }}>
+                {/* Artist name + genre */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 24, paddingRight: 20 }}>
+                  <div style={{ fontSize: nameSize, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em', lineHeight: 1.1, display: 'flex' }}>
                     {artistLine}
                   </div>
                   {show.genre && (
-                    <div style={{ display: 'flex', marginTop: 10 }}>
-                      <div style={{ fontSize: 10, color: color, letterSpacing: '0.22em', padding: '3px 10px', border: `1px solid ${color}55`, borderRadius: 2, display: 'flex' }}>
+                    <div style={{ display: 'flex', marginTop: 8 }}>
+                      <div style={{ fontSize: 10, color: color, letterSpacing: '0.22em', padding: '3px 10px', border: `1px solid ${color}`, borderRadius: 2, display: 'flex' }}>
                         {show.genre.toUpperCase()}
                       </div>
                     </div>
@@ -202,8 +183,8 @@ export async function GET(req: NextRequest) {
 
                 {/* Artist photo */}
                 {img && (
-                  <div style={{ width: imgSize, height: imgSize, borderRadius: 6, overflow: 'hidden', flexShrink: 0, marginRight: 36, display: 'flex' }}>
-                    <img src={img} width={imgSize} height={imgSize} style={{ width: imgSize, height: imgSize, objectFit: 'cover' }} alt="" />
+                  <div style={{ width: imgSize, height: imgSize, marginRight: 32, borderRadius: 4, overflow: 'hidden', flexShrink: 0, display: 'flex' }}>
+                    <img src={img} width={imgSize} height={imgSize} alt="" style={{ width: imgSize, height: imgSize }} />
                   </div>
                 )}
               </div>
@@ -212,8 +193,8 @@ export async function GET(req: NextRequest) {
         </div>
 
         {/* FOOTER */}
-        <div style={{ height: FOOTER_H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.18)', letterSpacing: '0.35em', display: 'flex' }}>
+        <div style={{ height: FOOTER_H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #0f0f0f' }}>
+          <div style={{ fontSize: 10, color: '#2a2a2a', letterSpacing: '0.4em', display: 'flex' }}>
             NIKKITLOPEZPHILLY.COM
           </div>
         </div>
