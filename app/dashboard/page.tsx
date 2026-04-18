@@ -8,8 +8,10 @@ type Task = {
   id: string
   name: string
   description?: string
-  message: string
+  message?: string
   schedule: string
+  agent_id: string
+  task_type: string
   enabled: boolean
   created_at: string
   last_run_at?: string
@@ -25,7 +27,20 @@ function getGreeting() {
 }
 
 function scheduleLabel(s: string) {
-  return s === 'hourly' ? 'Every hour' : s === 'daily' ? 'Daily 9am' : s === 'weekly' ? 'Weekly Mon' : s
+  if (s === 'hourly') return 'Every hour'
+  if (s === 'daily') return 'Daily 9am'
+  if (s === 'weekly') return 'Weekly Mon'
+  if (s === 'weekly-saturday') return 'Sat 10am EST'
+  return s
+}
+
+function agentLabel(id: string) {
+  if (id === 'nlp') return 'NLP'
+  return 'Vino'
+}
+
+function agentColor(id: string) {
+  return id === 'nlp' ? '#c0392b' : '#6B1414'
 }
 
 function timeAgo(iso?: string) {
@@ -39,28 +54,46 @@ function timeAgo(iso?: string) {
   return `${Math.floor(h / 24)}d ago`
 }
 
+function nextRunLabel(iso?: string) {
+  if (!iso) return null
+  const d = new Date(iso)
+  const diff = d.getTime() - Date.now()
+  if (diff < 0) return 'overdue'
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `in ${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `in ${h}h`
+  const days = Math.floor(h / 24)
+  return `in ${days}d`
+}
+
 const SCHEDULE_OPTIONS = [
   { value: 'hourly', label: 'Every hour' },
   { value: 'daily', label: 'Daily at 9am' },
   { value: 'weekly', label: 'Weekly (Mon 9am)' },
+  { value: 'weekly-saturday', label: 'Weekly (Sat 10am EST)' },
+]
+
+const AGENT_OPTIONS = [
+  { value: 'vino', label: '🍷 Vino — Wine Cellar' },
+  { value: 'nlp', label: '🎵 NLP — Nikki Lopez' },
 ]
 
 export default function DashboardHome() {
   const { status } = useSession()
   const router = useRouter()
 
-  // Chat
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  // Tasks
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [showAddTask, setShowAddTask] = useState(false)
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null)
   const [expandedTask, setExpandedTask] = useState<string | null>(null)
+  const [agentFilter, setAgentFilter] = useState<'all' | 'vino' | 'nlp'>('all')
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -78,6 +111,11 @@ export default function DashboardHome() {
   }, [])
 
   if (status === 'loading') return null
+
+  const filteredTasks = agentFilter === 'all' ? tasks : tasks.filter(t => t.agent_id === agentFilter)
+  const upcomingTasks = [...filteredTasks].sort((a, b) =>
+    new Date(a.next_run_at || '9999').getTime() - new Date(b.next_run_at || '9999').getTime()
+  )
 
   const sendChat = async () => {
     if (!chatInput.trim() || chatLoading) return
@@ -126,6 +164,16 @@ export default function DashboardHome() {
     setTasks(t => t.filter(task => task.id !== id))
     await fetch(`/api/tasks?id=${id}`, { method: 'DELETE' })
   }
+
+  const filterBtn = (val: typeof agentFilter, label: string) => (
+    <button
+      key={val}
+      onClick={() => setAgentFilter(val)}
+      style={{ fontSize: '12px', padding: '4px 12px', borderRadius: '20px', border: '0.5px solid', borderColor: agentFilter === val ? '#6B1414' : '#e8e0d8', background: agentFilter === val ? '#fdf2f2' : 'white', color: agentFilter === val ? '#6B1414' : '#888', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: '#f9f6f1', fontFamily: 'DM Sans, sans-serif' }}>
@@ -178,7 +226,6 @@ export default function DashboardHome() {
             <span style={{ fontSize: '11px', fontWeight: 500, color: '#6B1414', letterSpacing: '0.04em', textTransform: 'uppercase' }}>🍷 Vino</span>
             <span style={{ fontSize: '11px', color: '#bbb' }}>your sommelier</span>
           </div>
-
           <div style={{ minHeight: '120px', maxHeight: '280px', overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {messages.length === 0 && (
               <div style={{ fontSize: '13px', color: '#bbb', textAlign: 'center', marginTop: '24px' }}>
@@ -195,7 +242,6 @@ export default function DashboardHome() {
             {chatLoading && <div style={{ fontSize: '13px', color: '#aaa', fontStyle: 'italic' }}>Vino is thinking...</div>}
             <div ref={chatEndRef} />
           </div>
-
           <div style={{ padding: '10px 14px', borderTop: '0.5px solid #e8e0d8', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
               value={chatInput}
@@ -216,45 +262,59 @@ export default function DashboardHome() {
 
         {/* Tasks panel */}
         <div style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '16px', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #f0e8e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 500, color: '#6B1414', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Scheduled Tasks</span>
-              {tasks.length > 0 && (
-                <span style={{ fontSize: '11px', background: '#fdf2f2', color: '#6B1414', padding: '1px 7px', borderRadius: '20px' }}>{tasks.length}</span>
-              )}
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #f0e8e0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 500, color: '#6B1414', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Scheduled Tasks</span>
+                {tasks.length > 0 && (
+                  <span style={{ fontSize: '11px', background: '#fdf2f2', color: '#6B1414', padding: '1px 7px', borderRadius: '20px' }}>{tasks.length}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowAddTask(true)}
+                style={{ fontSize: '12px', padding: '5px 12px', background: '#6B1414', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }}
+              >
+                + Add task
+              </button>
             </div>
-            <button
-              onClick={() => setShowAddTask(true)}
-              style={{ fontSize: '12px', padding: '5px 12px', background: '#6B1414', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }}
-            >
-              + Add task
-            </button>
+            {/* Agent filter */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {filterBtn('all', 'All')}
+              {filterBtn('vino', '🍷 Vino')}
+              {filterBtn('nlp', '🎵 NLP')}
+            </div>
           </div>
 
-          <div style={{ padding: tasks.length === 0 ? '24px 16px' : '0' }}>
+          <div style={{ padding: upcomingTasks.length === 0 ? '24px 16px' : '0' }}>
             {tasksLoading ? (
               <p style={{ fontSize: '13px', color: '#bbb', textAlign: 'center' }}>Loading tasks...</p>
-            ) : tasks.length === 0 ? (
+            ) : upcomingTasks.length === 0 ? (
               <p style={{ fontSize: '13px', color: '#bbb', textAlign: 'center' }}>
                 No tasks yet. Add one to automate your agents.
               </p>
-            ) : tasks.map((task, i) => (
-              <div key={task.id} style={{ borderBottom: i < tasks.length - 1 ? '0.5px solid #f4ede8' : 'none' }}>
-                {/* Task row */}
+            ) : upcomingTasks.map((task, i) => (
+              <div key={task.id} style={{ borderBottom: i < upcomingTasks.length - 1 ? '0.5px solid #f4ede8' : 'none' }}>
                 <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  {/* Status dot */}
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: task.enabled ? '#0F6E56' : '#ccc', marginTop: '5px', flexShrink: 0 }} />
 
-                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#1a1210' }}>{task.name}</span>
                       <span style={{ fontSize: '10px', background: '#f4ede8', color: '#888', padding: '1px 7px', borderRadius: '20px' }}>{scheduleLabel(task.schedule)}</span>
+                      <span style={{ fontSize: '10px', background: '#fdf2f2', color: agentColor(task.agent_id), padding: '1px 7px', borderRadius: '20px' }}>{agentLabel(task.agent_id)}</span>
                     </div>
+
+                    {/* Next run */}
+                    {task.enabled && task.next_run_at && (
+                      <div style={{ fontSize: '11px', color: '#0F6E56', marginBottom: '2px' }}>
+                        ↻ Next run {nextRunLabel(task.next_run_at)} · {new Date(task.next_run_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+
                     {task.lastRun ? (
                       <div style={{ fontSize: '11px', color: '#aaa' }}>
                         {task.lastRun.status === 'completed' ? '✓' : task.lastRun.status === 'failed' ? '✗' : '⋯'}{' '}
-                        {timeAgo(task.lastRun.completed_at)}
+                        Last run {timeAgo(task.lastRun.completed_at)}
                         {task.lastRun.result && (
                           <button
                             onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
@@ -265,11 +325,10 @@ export default function DashboardHome() {
                         )}
                       </div>
                     ) : (
-                      <div style={{ fontSize: '11px', color: '#bbb' }}>Never run · next {timeAgo(task.next_run_at) ? `in ${task.next_run_at ? new Date(task.next_run_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}` : '—'}</div>
+                      <div style={{ fontSize: '11px', color: '#bbb' }}>Never run</div>
                     )}
                   </div>
 
-                  {/* Actions */}
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                     <button
                       onClick={() => runTask(task.id)}
@@ -293,7 +352,6 @@ export default function DashboardHome() {
                   </div>
                 </div>
 
-                {/* Expanded result */}
                 {expandedTask === task.id && task.lastRun?.result && (
                   <div style={{ padding: '0 16px 14px 36px' }}>
                     <div style={{ background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
@@ -318,16 +376,36 @@ export default function DashboardHome() {
 }
 
 function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Task) => void }) {
-  const [form, setForm] = useState({ name: '', description: '', message: '', schedule: 'daily' })
+  const [form, setForm] = useState({ name: '', description: '', message: '', schedule: 'daily', agentId: 'vino', taskType: 'openclaw' })
   const [saving, setSaving] = useState(false)
 
+  const isNlp = form.agentId === 'nlp'
+
+  const handleAgentChange = (agentId: string) => {
+    setForm(f => ({
+      ...f,
+      agentId,
+      taskType: agentId === 'nlp' ? 'nlp-sync' : 'openclaw',
+      schedule: agentId === 'nlp' ? 'weekly-saturday' : f.schedule,
+      name: agentId === 'nlp' && !f.name ? 'NLP Weekly Show Sync' : f.name,
+    }))
+  }
+
   const submit = async () => {
-    if (!form.name || !form.message) return
+    if (!form.name) return
+    if (!isNlp && !form.message) return
     setSaving(true)
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        name: form.name,
+        description: form.description || undefined,
+        message: form.message || undefined,
+        schedule: form.schedule,
+        agentId: form.agentId,
+        taskType: form.taskType,
+      }),
     })
     const task = await res.json()
     onAdd(task)
@@ -345,19 +423,34 @@ function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Task
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#aaa' }}>×</button>
         </div>
 
+        <label style={lbl}>Agent</label>
+        <select value={form.agentId} onChange={e => handleAgentChange(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+          {AGENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+
         <label style={lbl}>Task name *</label>
-        <input style={inp} placeholder="e.g. Scan auction deals" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+        <input style={inp} placeholder="e.g. Weekly show sync" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
         <label style={lbl}>Description</label>
-        <input style={inp} placeholder="Optional note about this task" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+        <input style={inp} placeholder="Optional note" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
 
-        <label style={lbl}>What should Vino do? *</label>
-        <textarea
-          style={{ ...inp, height: '90px', resize: 'none' as const }}
-          placeholder="e.g. Search major wine auction sites (Zachys, Acker, WineBid) for deals on Burgundy and Bordeaux similar to my cellar. List top 5 with estimated savings."
-          value={form.message}
-          onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
-        />
+        {!isNlp && (
+          <>
+            <label style={lbl}>What should Vino do? *</label>
+            <textarea
+              style={{ ...inp, height: '90px', resize: 'none' as const }}
+              placeholder="e.g. Search auction sites for Burgundy deals similar to my cellar. List top 5 with estimated savings."
+              value={form.message}
+              onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+            />
+          </>
+        )}
+
+        {isNlp && (
+          <div style={{ background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '10px', padding: '12px 14px', marginBottom: '12px', fontSize: '13px', color: '#555', lineHeight: 1.6 }}>
+            This task will automatically scrape TicketWeb every Saturday at 10am EST, save next week's Nikki Lopez shows, and refresh the poster.
+          </div>
+        )}
 
         <label style={lbl}>Schedule</label>
         <select
@@ -370,8 +463,8 @@ function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Task
 
         <button
           onClick={submit}
-          disabled={!form.name || !form.message || saving}
-          style={{ width: '100%', padding: '12px', background: form.name && form.message ? '#6B1414' : '#e8e0d8', color: form.name && form.message ? 'white' : '#aaa', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', fontWeight: 500, cursor: form.name && form.message ? 'pointer' : 'default' }}
+          disabled={!form.name || (!isNlp && !form.message) || saving}
+          style={{ width: '100%', padding: '12px', background: (form.name && (isNlp || form.message)) ? '#6B1414' : '#e8e0d8', color: (form.name && (isNlp || form.message)) ? 'white' : '#aaa', border: 'none', borderRadius: '10px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', fontWeight: 500, cursor: (form.name && (isNlp || form.message)) ? 'pointer' : 'default' }}
         >
           {saving ? 'Saving...' : 'Create task'}
         </button>

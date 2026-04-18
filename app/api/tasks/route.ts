@@ -26,9 +26,12 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   await ensureTables()
-  const { name, description, message, schedule, agentId = 'vino' } = await req.json()
-  if (!name || !message || !schedule) {
-    return NextResponse.json({ error: 'name, message, and schedule are required' }, { status: 400 })
+  const { name, description, message, schedule, agentId = 'vino', taskType = 'openclaw' } = await req.json()
+  if (!name || !schedule) {
+    return NextResponse.json({ error: 'name and schedule are required' }, { status: 400 })
+  }
+  if (taskType === 'openclaw' && !message) {
+    return NextResponse.json({ error: 'message is required for openclaw tasks' }, { status: 400 })
   }
 
   const sql = getDb()
@@ -37,11 +40,11 @@ export async function POST(req: NextRequest) {
   const nextRunAt = computeNextRun(schedule)
 
   await sql`
-    INSERT INTO agent_tasks (id, name, description, message, schedule, agent_id, enabled, created_at, next_run_at)
-    VALUES (${id}, ${name}, ${description ?? null}, ${message}, ${schedule}, ${agentId}, true, ${createdAt}, ${nextRunAt})
+    INSERT INTO agent_tasks (id, name, description, message, schedule, agent_id, task_type, enabled, created_at, next_run_at)
+    VALUES (${id}, ${name}, ${description ?? null}, ${message ?? null}, ${schedule}, ${agentId}, ${taskType}, true, ${createdAt}, ${nextRunAt})
   `
 
-  return NextResponse.json({ id, name, description, message, schedule, agentId, enabled: true, createdAt, nextRunAt })
+  return NextResponse.json({ id, name, description, message, schedule, agentId, taskType, enabled: true, createdAt, nextRunAt })
 }
 
 export async function PATCH(req: NextRequest) {
