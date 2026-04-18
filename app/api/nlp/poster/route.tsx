@@ -2,8 +2,6 @@ import { ImageResponse } from 'next/og'
 import { NextRequest } from 'next/server'
 import { neon } from '@neondatabase/serverless'
 
-export const runtime = 'edge'
-
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
 function getMonday(dateStr?: string): Date {
@@ -36,12 +34,14 @@ export async function GET(req: NextRequest) {
   const rows = await sql`
     SELECT show_date, artist_name, genre FROM nlp_shows
     WHERE show_date >= ${weekStartStr} AND show_date <= ${weekEndStr}
-    ORDER BY show_date
+    ORDER BY show_date, artist_name
   `
 
-  const byDate: Record<string, { artist: string; genre?: string }> = {}
+  const byDate: Record<string, { artists: string[]; genre?: string }> = {}
   for (const r of rows) {
-    byDate[r.show_date as string] = { artist: r.artist_name as string, genre: r.genre as string | undefined }
+    const date = r.show_date as string
+    if (!byDate[date]) byDate[date] = { artists: [], genre: r.genre as string | undefined }
+    byDate[date].artists.push(r.artist_name as string)
   }
 
   const weekLabel = `${fmtDate(monday)} – ${fmtDate(weekDays[6])}, ${monday.getUTCFullYear()}`
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       >
         {/* Outer border */}
         <div style={{ position: 'absolute', inset: '18px', border: '1px solid rgba(255,255,255,0.12)', display: 'flex' }} />
-        {/* Inner accent border top */}
+        {/* Red accent lines */}
         <div style={{ position: 'absolute', top: '28px', left: '28px', right: '28px', height: '1px', background: 'rgba(192,57,43,0.4)', display: 'flex' }} />
         <div style={{ position: 'absolute', bottom: '28px', left: '28px', right: '28px', height: '1px', background: 'rgba(192,57,43,0.4)', display: 'flex' }} />
 
@@ -92,6 +92,7 @@ export async function GET(req: NextRequest) {
               const ds = day.toISOString().split('T')[0]
               const show = byDate[ds]
               const num = day.getUTCDate()
+              const artistLine = show ? show.artists.join(' · ') : ''
               return (
                 <div
                   key={i}
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
                   </div>
                   <div style={{ width: '1px', height: '14px', background: '#2a2a2a', margin: '0 22px', display: 'flex' }} />
                   <div style={{
-                    fontSize: show ? '24px' : '13px',
+                    fontSize: show ? '22px' : '13px',
                     color: show ? 'white' : '#333',
                     fontWeight: show ? 600 : 400,
                     letterSpacing: show ? '-0.01em' : '0.08em',
@@ -117,7 +118,7 @@ export async function GET(req: NextRequest) {
                     alignItems: 'center',
                     gap: '12px',
                   }}>
-                    {show ? show.artist : '———'}
+                    {show ? artistLine : '———'}
                     {show?.genre && (
                       <span style={{ fontSize: '11px', color: '#c0392b', letterSpacing: '0.1em', display: 'flex' }}>
                         {show.genre.toUpperCase()}
