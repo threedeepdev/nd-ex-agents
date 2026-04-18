@@ -148,8 +148,8 @@ export default function DashboardHome() {
           <p style={{ fontSize: '13px', color: '#aaa', marginTop: '5px' }}>What would you like to work on today?</p>
         </div>
 
-        {/* Agent card */}
-        <div style={{ marginBottom: '28px' }}>
+        {/* Agent cards */}
+        <div style={{ marginBottom: '28px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <div
             onClick={() => router.push('/dashboard/wine')}
             style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '14px', padding: '18px 20px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '12px' }}
@@ -158,6 +158,16 @@ export default function DashboardHome() {
             <div>
               <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '17px', fontWeight: 400, color: '#1a1210' }}>Wine Cellar</div>
               <div style={{ fontSize: '11px', color: '#aaa', marginTop: '1px' }}>Open →</div>
+            </div>
+          </div>
+          <div
+            onClick={() => router.push('/dashboard/nlp')}
+            style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '14px', padding: '18px 20px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '12px' }}
+          >
+            <span style={{ fontSize: '24px' }}>🎵</span>
+            <div>
+              <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '17px', fontWeight: 400, color: '#1a1210' }}>NLP</div>
+              <div style={{ fontSize: '11px', color: '#aaa', marginTop: '1px' }}>Nikki Lopez Venue →</div>
             </div>
           </div>
         </div>
