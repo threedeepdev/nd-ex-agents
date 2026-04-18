@@ -376,34 +376,27 @@ function AddWineModal({ onClose, onAdd }: { onClose: () => void, onAdd: (w: Wine
     setStep('identifying')
     const reader = new FileReader()
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(',')[1]
+      const dataUrl = reader.result as string
+      const base64 = dataUrl.split(',')[1]
+      const mimeType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg'
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch('/api/identify-wine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: 'Identify this wine from the photo. Return ONLY a valid JSON object with these exact fields, no other text: {"name":"","producer":"","vintage":null,"region":"","varietal":"","estimatedRetailCost":null}',
-            imageBase64: base64
-          })
+          body: JSON.stringify({ imageBase64: base64, mimeType })
         })
-        const data = await res.json()
-        try {
-          const jsonMatch = data.reply.match(/\{[\s\S]*\}/)
-          const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
-          setForm(f => ({
-            ...f,
-            name: parsed.name || '',
-            producer: parsed.producer || '',
-            vintage: parsed.vintage ? String(parsed.vintage) : '',
-            region: parsed.region || '',
-            varietal: parsed.varietal || '',
-            estimatedRetailCost: parsed.estimatedRetailCost ? String(parsed.estimatedRetailCost) : '',
-          }))
-        } catch {
-          // parse failed, leave form empty for manual entry
-        }
+        const parsed = await res.json()
+        setForm(f => ({
+          ...f,
+          name: parsed.name || '',
+          producer: parsed.producer || '',
+          vintage: parsed.vintage ? String(parsed.vintage) : '',
+          region: parsed.region || '',
+          varietal: parsed.varietal || '',
+          estimatedRetailCost: parsed.estimatedRetailCost ? String(parsed.estimatedRetailCost) : '',
+        }))
       } catch {
-        // network error, continue to form
+        // network error or parse failed — continue to empty form
       }
       setStep('form')
     }
