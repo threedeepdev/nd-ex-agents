@@ -1,69 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { neon } from '@neondatabase/serverless'
 
-const GATEWAY = process.env.OPENCLAW_GATEWAY_URL!
-const TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN!
+function getDb() {
+  return neon(process.env.DATABASE_URL!)
+}
 
-async function fetchCellar() {
-  const res = await fetch(`${GATEWAY}/api/workspace/file`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      agentId: 'vino',
-      path: '/home/openclaw/.openclaw/workspace/wine-cellar/cellar.json',
-      action: 'read'
-    })
-  })
-  if (!res.ok) return { cellar: [] }
-  const data = await res.json()
-  try { return JSON.parse(data.content) } catch { return { cellar: [] } }
+async function ensureTable() {
+  const sql = getDb()
+  await sql`
+    CREATE TABLE IF NOT EXISTS wines (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      producer    TEXT,
+      vintage     INTEGER,
+      region      TEXT,
+      country     TEXT,
+      varietal    TEXT,
+      score       INTEGER,
+      estimated_retail_cost NUMERIC,
+      drink_from  INTEGER,
+      drink_until INTEGER,
+      pairings    TEXT,
+      notes       TEXT,
+      added_date  TEXT,
+      status      TEXT NOT NULL DEFAULT 'in_cellar',
+      tasted      BOOLEAN DEFAULT FALSE,
+      consumed_date TEXT,
+      my_rating   INTEGER
+    )
+  `
+}
+
+function rowToWine(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    producer: row.producer ?? undefined,
+    vintage: row.vintage ?? undefined,
+    region: row.region ?? undefined,
+    country: row.country ?? undefined,
+    varietal: row.varietal ?? undefined,
+    score: row.score ?? undefined,
+    estimatedRetailCost: row.estimated_retail_cost ?? undefined,
+    drinkFrom: row.drink_from ?? undefined,
+    drinkUntil: row.drink_until ?? undefined,
+    pairings: row.pairings ? JSON.parse(row.pairings as string) : undefined,
+    notes: row.notes ?? undefined,
+    addedDate: row.added_date ?? undefined,
+    status: row.status as 'in_cellar' | 'consumed',
+    tasted: row.tasted ?? undefined,
+    consumedDate: row.consumed_date ?? undefined,
+    myRating: row.my_rating ?? undefined,
+  }
 }
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  try {
-    const data = await fetchCellar()
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ cellar: [] })
-  }
+  await ensureTable()
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM wines ORDER BY added_date DESC`
+  return NextResponse.json({ cellar: rows.map(rowToWine) })
 }
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  await ensureTable()
   const wine = await req.json()
-  const current = await fetchCellar()
-  
-  const newWine = {
-    id: `wine-${String(current.cellar.length + 1).padStart(3, '0')}`,
-    ...wine,
-    addedDate: new Date().toISOString().split('T')[0],
-    status: wine.status || 'in_cellar'
-  }
+  const sql = getDb()
 
-  current.cellar.push(newWine)
+  const id = `wine-${crypto.randomUUID().split('-')[0]}`
+  const addedDate = new Date().toISOString().split('T')[0]
+  const pairings = wine.pairings ? JSON.stringify(wine.pairings) : null
 
-  await fetch(`${GATEWAY}/api/workspace/file`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      agentId: 'vino',
-      path: '/home/openclaw/.openclaw/workspace/wine-cellar/cellar.json',
-      action: 'write',
-      content: JSON.stringify(current, null, 2)
-    })
-  })
+  await sql`
+    INSERT INTO wines (
+      id, name, producer, vintage, region, country, varietal,
+      score, estimated_retail_cost, drink_from, drink_until,
+      pairings, notes, added_date, status, tasted, consumed_date, my_rating
+    ) VALUES (
+      ${id}, ${wine.name}, ${wine.producer ?? null}, ${wine.vintage ?? null},
+      ${wine.region ?? null}, ${wine.country ?? null}, ${wine.varietal ?? null},
+      ${wine.score ?? null}, ${wine.estimatedRetailCost ?? null},
+      ${wine.drinkFrom ?? null}, ${wine.drinkUntil ?? null},
+      ${pairings}, ${wine.notes ?? null},
+      ${addedDate}, ${wine.status ?? 'in_cellar'}, ${wine.tasted ?? false},
+      ${wine.consumedDate ?? null}, ${wine.myRating ?? null}
+    )
+  `
 
-  return NextResponse.json(newWine)
+  return NextResponse.json({ ...wine, id, addedDate, status: wine.status ?? 'in_cellar' })
 }
