@@ -474,7 +474,7 @@ function AddWineModal({ onClose, onAdd }: { onClose: () => void, onAdd: (w: Wine
         {/* Step: method selection */}
         {step === 'method' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
+            <input ref={cameraRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
             <input ref={uploadRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }} />
 
             <button onClick={() => cameraRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 18px', background: '#fdf9f6', border: '0.5px solid #e8e0d8', borderRadius: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
