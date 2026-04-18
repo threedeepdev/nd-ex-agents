@@ -279,6 +279,6 @@ export async function GET(req: NextRequest) {
         </div>
       </div>
     ),
-    { width: W, height: H }
+    { width: W, height: H, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
   )
 }

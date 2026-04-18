@@ -284,7 +284,8 @@ function WeekSection({ label, dateRange, shows, loading, onDelete, onAdd }: {
 }
 
 function PosterCard({ label, week, posterKey, onRefresh, onTap }: { label: string; week: string; posterKey: number; onRefresh: () => void; onTap: () => void }) {
-  const posterUrl = `/api/nlp/poster?week=${week}`
+  const today = new Date().toISOString().split('T')[0]
+  const posterUrl = `/api/nlp/poster?week=${week}&d=${today}&v=${posterKey}`
   return (
     <div style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '12px', overflow: 'hidden' }}>
       <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #f0e8e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -302,7 +303,8 @@ function PosterCard({ label, week, posterKey, onRefresh, onTap }: { label: strin
 }
 
 function PosterModal({ week, label, onClose }: { week: string; label: string; onClose: () => void }) {
-  const posterUrl = `/api/nlp/poster?week=${week}`
+  const today = new Date().toISOString().split('T')[0]
+  const posterUrl = `/api/nlp/poster?week=${week}&d=${today}`
 
   const share = async () => {
     try {
