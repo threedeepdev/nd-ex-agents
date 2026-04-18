@@ -83,9 +83,13 @@ export default function DashboardHome() {
   const { status } = useSession()
   const router = useRouter()
 
-  const [chatInput, setChatInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [chatLoading, setChatLoading] = useState(false)
+  const [activeChat, setActiveChat] = useState<'vino' | 'nlp'>('vino')
+  const [vinoInput, setVinoInput] = useState('')
+  const [vinoMessages, setVinoMessages] = useState<Message[]>([])
+  const [vinoLoading, setVinoLoading] = useState(false)
+  const [nlpInput, setNlpInput] = useState('')
+  const [nlpMessages, setNlpMessages] = useState<Message[]>([])
+  const [nlpLoading, setNlpLoading] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const [tasks, setTasks] = useState<Task[]>([])
@@ -101,7 +105,7 @@ export default function DashboardHome() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [vinoMessages, nlpMessages])
 
   useEffect(() => {
     fetch('/api/tasks')
@@ -117,24 +121,28 @@ export default function DashboardHome() {
     new Date(a.next_run_at || '9999').getTime() - new Date(b.next_run_at || '9999').getTime()
   )
 
-  const sendChat = async () => {
-    if (!chatInput.trim() || chatLoading) return
-    const msg = chatInput.trim()
-    setChatInput('')
+  const sendChat = async (agentId: 'vino' | 'nlp') => {
+    const input = agentId === 'vino' ? vinoInput : nlpInput
+    const setInput = agentId === 'vino' ? setVinoInput : setNlpInput
+    const setMessages = agentId === 'vino' ? setVinoMessages : setNlpMessages
+    const setLoading = agentId === 'vino' ? setVinoLoading : setNlpLoading
+    if (!input.trim() || (agentId === 'vino' ? vinoLoading : nlpLoading)) return
+    const msg = input.trim()
+    setInput('')
     setMessages(m => [...m, { role: 'user', content: msg }])
-    setChatLoading(true)
+    setLoading(true)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify({ message: msg, agentId }),
       })
       const data = await res.json()
       setMessages(m => [...m, { role: 'assistant', content: data.reply || 'No response.' }])
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Something went wrong. Try again.' }])
     }
-    setChatLoading(false)
+    setLoading(false)
   }
 
   const runTask = async (taskId: string) => {
@@ -222,42 +230,67 @@ export default function DashboardHome() {
 
         {/* Chat panel */}
         <div style={{ background: 'white', border: '0.5px solid #e8e0d8', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px' }}>
-          <div style={{ padding: '11px 16px', borderBottom: '0.5px solid #f0e8e0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 500, color: '#6B1414', letterSpacing: '0.04em', textTransform: 'uppercase' }}>🍷 Vino</span>
-            <span style={{ fontSize: '11px', color: '#bbb' }}>your sommelier</span>
-          </div>
-          <div style={{ minHeight: '120px', maxHeight: '280px', overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {messages.length === 0 && (
-              <div style={{ fontSize: '13px', color: '#bbb', textAlign: 'center', marginTop: '24px' }}>
-                Ask Vino anything about your wine collection...
-              </div>
-            )}
-            {messages.map((m, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{ maxWidth: '78%', padding: '8px 12px', borderRadius: '12px', fontSize: '13px', lineHeight: '1.55', background: m.role === 'user' ? '#6B1414' : '#fdf9f6', color: m.role === 'user' ? 'white' : '#1a1210', border: m.role === 'assistant' ? '0.5px solid #e8e0d8' : 'none' }}>
-                  {m.content}
-                </div>
-              </div>
+          {/* Agent tabs */}
+          <div style={{ padding: '0 16px', borderBottom: '0.5px solid #f0e8e0', display: 'flex', gap: '0' }}>
+            {([['vino', '🍷 Vino', 'your sommelier'], ['nlp', '🎵 NLP', 'Nikki Lopez venue']] as const).map(([id, emoji, sub]) => (
+              <button
+                key={id}
+                onClick={() => setActiveChat(id)}
+                style={{ padding: '11px 16px', fontSize: '12px', fontFamily: 'DM Sans, sans-serif', background: 'none', border: 'none', borderBottom: activeChat === id ? '2px solid #6B1414' : '2px solid transparent', cursor: 'pointer', color: activeChat === id ? '#6B1414' : '#aaa', fontWeight: activeChat === id ? 500 : 400, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '-1px' }}
+              >
+                {emoji} <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '11px' }}>{id === 'vino' ? 'Vino' : 'NLP'}</span>
+                <span style={{ fontSize: '11px', color: '#ccc', fontWeight: 400 }}>{sub}</span>
+              </button>
             ))}
-            {chatLoading && <div style={{ fontSize: '13px', color: '#aaa', fontStyle: 'italic' }}>Vino is thinking...</div>}
-            <div ref={chatEndRef} />
           </div>
-          <div style={{ padding: '10px 14px', borderTop: '0.5px solid #e8e0d8', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendChat()}
-              placeholder="Ask anything..."
-              style={{ flex: 1, border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', background: '#fafaf8', outline: 'none', color: '#1a1210' }}
-            />
-            <button
-              onClick={sendChat}
-              disabled={!chatInput.trim() || chatLoading}
-              style={{ padding: '9px 16px', background: chatInput.trim() && !chatLoading ? '#6B1414' : '#ede8e3', color: chatInput.trim() && !chatLoading ? 'white' : '#bbb', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: chatInput.trim() && !chatLoading ? 'pointer' : 'default', fontFamily: 'DM Sans, sans-serif', flexShrink: 0 }}
-            >
-              Send
-            </button>
-          </div>
+
+          {/* Vino chat */}
+          {activeChat === 'vino' && (
+            <>
+              <div style={{ minHeight: '120px', maxHeight: '280px', overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {vinoMessages.length === 0 && (
+                  <div style={{ fontSize: '13px', color: '#bbb', textAlign: 'center', marginTop: '24px' }}>Ask Vino anything about your wine collection...</div>
+                )}
+                {vinoMessages.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ maxWidth: '78%', padding: '8px 12px', borderRadius: '12px', fontSize: '13px', lineHeight: '1.55', background: m.role === 'user' ? '#6B1414' : '#fdf9f6', color: m.role === 'user' ? 'white' : '#1a1210', border: m.role === 'assistant' ? '0.5px solid #e8e0d8' : 'none' }}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {vinoLoading && <div style={{ fontSize: '13px', color: '#aaa', fontStyle: 'italic' }}>Vino is thinking...</div>}
+                <div ref={chatEndRef} />
+              </div>
+              <div style={{ padding: '10px 14px', borderTop: '0.5px solid #e8e0d8', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input value={vinoInput} onChange={e => setVinoInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat('vino')} placeholder="Ask anything..." style={{ flex: 1, border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', background: '#fafaf8', outline: 'none', color: '#1a1210' }} />
+                <button onClick={() => sendChat('vino')} disabled={!vinoInput.trim() || vinoLoading} style={{ padding: '9px 16px', background: vinoInput.trim() && !vinoLoading ? '#6B1414' : '#ede8e3', color: vinoInput.trim() && !vinoLoading ? 'white' : '#bbb', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: vinoInput.trim() && !vinoLoading ? 'pointer' : 'default', fontFamily: 'DM Sans, sans-serif', flexShrink: 0 }}>Send</button>
+              </div>
+            </>
+          )}
+
+          {/* NLP chat */}
+          {activeChat === 'nlp' && (
+            <>
+              <div style={{ minHeight: '120px', maxHeight: '280px', overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {nlpMessages.length === 0 && (
+                  <div style={{ fontSize: '13px', color: '#bbb', textAlign: 'center', marginTop: '24px' }}>Ask about upcoming shows, the schedule, or the venue...</div>
+                )}
+                {nlpMessages.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ maxWidth: '78%', padding: '8px 12px', borderRadius: '12px', fontSize: '13px', lineHeight: '1.55', background: m.role === 'user' ? '#c0392b' : '#fdf9f6', color: m.role === 'user' ? 'white' : '#1a1210', border: m.role === 'assistant' ? '0.5px solid #e8e0d8' : 'none' }}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {nlpLoading && <div style={{ fontSize: '13px', color: '#aaa', fontStyle: 'italic' }}>NLP is thinking...</div>}
+                <div ref={chatEndRef} />
+              </div>
+              <div style={{ padding: '10px 14px', borderTop: '0.5px solid #e8e0d8', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input value={nlpInput} onChange={e => setNlpInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat('nlp')} placeholder="What's on this weekend?" style={{ flex: 1, border: '0.5px solid #e8e0d8', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', background: '#fafaf8', outline: 'none', color: '#1a1210' }} />
+                <button onClick={() => sendChat('nlp')} disabled={!nlpInput.trim() || nlpLoading} style={{ padding: '9px 16px', background: nlpInput.trim() && !nlpLoading ? '#c0392b' : '#ede8e3', color: nlpInput.trim() && !nlpLoading ? 'white' : '#bbb', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: nlpInput.trim() && !nlpLoading ? 'pointer' : 'default', fontFamily: 'DM Sans, sans-serif', flexShrink: 0 }}>Send</button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Tasks panel */}

@@ -29,21 +29,37 @@ async function getCellarContext(): Promise<string> {
   }
 }
 
-async function chatViaOpenClaw(message: string, imageBase64?: string): Promise<string> {
-  const body: Record<string, unknown> = {
-    agentId: 'vino',
-    message,
-    sessionId: 'web-cellar',
+async function getShowsContext(): Promise<string> {
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    const today = new Date().toISOString().split('T')[0]
+    const twoWeeksOut = new Date()
+    twoWeeksOut.setDate(twoWeeksOut.getDate() + 14)
+    const until = twoWeeksOut.toISOString().split('T')[0]
+    const rows = await sql`
+      SELECT show_date, artist_name, genre, description
+      FROM nlp_shows
+      WHERE show_date >= ${today} AND show_date <= ${until}
+      ORDER BY show_date
+    `
+    if (rows.length === 0) return 'No upcoming shows scheduled in the next two weeks.'
+    return rows.map(r => {
+      const parts = [`${r.show_date}: ${r.artist_name}`]
+      if (r.genre) parts.push(`(${r.genre})`)
+      if (r.description) parts.push(`— ${r.description}`)
+      return parts.join(' ')
+    }).join('\n')
+  } catch {
+    return 'Show data unavailable.'
   }
-  if (imageBase64) {
-    body.attachments = [{ type: 'image', data: imageBase64 }]
-  }
+}
+
+async function chatViaOpenClaw(agentId: string, message: string, sessionId: string, imageBase64?: string): Promise<string> {
+  const body: Record<string, unknown> = { agentId, message, sessionId }
+  if (imageBase64) body.attachments = [{ type: 'image', data: imageBase64 }]
   const res = await fetch(`${GATEWAY}/api/agent/message`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15000),
   })
@@ -52,25 +68,33 @@ async function chatViaOpenClaw(message: string, imageBase64?: string): Promise<s
   return data.message || data.content || data.reply || 'No response'
 }
 
-async function chatViaClaude(message: string, imageBase64?: string, mimeType = 'image/jpeg'): Promise<string> {
+async function chatViaClaude(agentId: string, message: string, imageBase64?: string, mimeType = 'image/jpeg'): Promise<string> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-  const cellarContext = await getCellarContext()
-  const system = `You are Vino, a knowledgeable sommelier assistant for Justin. You help manage his wine cellar, suggest pairings, and answer wine questions.
+
+  let system: string
+  if (agentId === 'nlp') {
+    const showsContext = await getShowsContext()
+    system = `You are the NLP assistant for Nikki Lopez Philly, a live music venue in Philadelphia. You help with the show schedule, upcoming events, and venue questions.
+
+Upcoming shows:
+${showsContext}
+
+Be concise, helpful, and enthusiastic about live music.`
+  } else {
+    const cellarContext = await getCellarContext()
+    system = `You are Vino, a knowledgeable sommelier assistant for Justin. You help manage his wine cellar, suggest pairings, and answer wine questions.
 
 Justin's current cellar:
 ${cellarContext}
 
 Be concise and warm.`
+  }
 
   const content: Anthropic.ContentBlockParam[] = []
   if (imageBase64) {
     content.push({
       type: 'image',
-      source: {
-        type: 'base64',
-        media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-        data: imageBase64,
-      },
+      source: { type: 'base64', media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: imageBase64 },
     })
   }
   content.push({ type: 'text', text: message })
@@ -88,15 +112,15 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { message, imageBase64, mimeType } = await req.json()
+  const { message, imageBase64, mimeType, agentId = 'vino' } = await req.json()
+  const sessionId = agentId === 'nlp' ? 'web-nlp' : 'web-cellar'
 
-  // Try OpenClaw first, fall back to direct Claude if unavailable
   try {
-    const reply = await chatViaOpenClaw(message, imageBase64)
+    const reply = await chatViaOpenClaw(agentId, message, sessionId, imageBase64)
     return NextResponse.json({ reply, source: 'openclaw' })
   } catch (err) {
-    console.warn('OpenClaw unavailable, falling back to Claude:', err)
-    const reply = await chatViaClaude(message, imageBase64, mimeType)
+    console.warn(`OpenClaw unavailable for ${agentId}, falling back to Claude:`, err)
+    const reply = await chatViaClaude(agentId, message, imageBase64, mimeType)
     return NextResponse.json({ reply, source: 'claude' })
   }
 }
