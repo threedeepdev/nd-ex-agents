@@ -160,7 +160,7 @@ export default function NLPPage() {
           <h1 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '22px', fontWeight: 400, color: '#1a1210', margin: 0 }}>
             Upcoming Shows
           </h1>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="nlp-topbar-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               onClick={syncFromWeb}
               disabled={syncing}
@@ -186,9 +186,9 @@ export default function NLPPage() {
         )}
 
         {/* Content */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', gap: '24px' }}>
+        <div className="nlp-content" style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', gap: '24px' }}>
           {/* Show lists */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '28px', minWidth: 0 }}>
             <WeekSection
               label="This Week"
               dateRange={weekLabel(thisMonday)}
@@ -208,7 +208,7 @@ export default function NLPPage() {
           </div>
 
           {/* Posters */}
-          <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="nlp-poster-panel" style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <PosterCard label="This Week" week={thisMonday} posterKey={posterKeys.this} onRefresh={() => setPosterKeys(k => ({ ...k, this: k.this + 1 }))} />
             <PosterCard label="Next Week" week={nextMonday} posterKey={posterKeys.next} onRefresh={() => setPosterKeys(k => ({ ...k, next: k.next + 1 }))} />
           </div>

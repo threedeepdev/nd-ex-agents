@@ -44,4 +44,22 @@ body {
   .wine-modal-box {
     width: calc(100vw - 32px) !important;
   }
+
+  /* NLP page mobile */
+  .nlp-content {
+    flex-direction: column !important;
+    padding: 16px !important;
+  }
+  .nlp-poster-panel {
+    width: 100% !important;
+    flex-direction: row !important;
+    gap: 12px !important;
+  }
+  .nlp-topbar-actions {
+    gap: 6px !important;
+  }
+  .nlp-topbar-actions button, .nlp-topbar-actions a {
+    font-size: 12px !important;
+    padding: 7px 10px !important;
+  }
 }
