@@ -56,6 +56,20 @@ export function computeNextRun(schedule: string): string {
   return now.toISOString()
 }
 
+export async function seedDefaultTasks() {
+  const sql = getDb()
+  const existing = await sql`SELECT id FROM agent_tasks WHERE agent_id = 'nlp' AND task_type = 'nlp-sync' LIMIT 1`
+  if (existing.length > 0) return
+
+  const id = `task-${crypto.randomUUID().split('-')[0]}`
+  const createdAt = new Date().toISOString()
+  const nextRunAt = computeNextRun('weekly-saturday')
+  await sql`
+    INSERT INTO agent_tasks (id, name, description, message, schedule, agent_id, task_type, enabled, created_at, next_run_at)
+    VALUES (${id}, 'Weekly Show Sync', 'Scrape Ticketmaster for next week''s Nikki Lopez shows', null, 'weekly-saturday', 'nlp', 'nlp-sync', true, ${createdAt}, ${nextRunAt})
+  `
+}
+
 export function scheduleLabel(s: string) {
   if (s === 'hourly') return 'Every hour'
   if (s === 'daily') return 'Daily 9am'

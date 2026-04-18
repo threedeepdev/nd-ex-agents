@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getDb, ensureTables, computeNextRun } from '@/lib/tasks'
+import { getDb, ensureTables, computeNextRun, seedDefaultTasks } from '@/lib/tasks'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   await ensureTables()
+  await seedDefaultTasks()
   const sql = getDb()
 
   const tasks = await sql`SELECT * FROM agent_tasks ORDER BY created_at DESC`
