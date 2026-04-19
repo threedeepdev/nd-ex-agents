@@ -80,7 +80,7 @@ export async function scrapeTicketmaster(): Promise<ScrapedShow[]> {
         return {
           showDate: localDate || '',
           artistName: name,
-          genre: genre && genre !== 'Undefined' ? genre : undefined,
+          genre: genre && genre !== 'Undefined' && genre !== 'Other' ? genre : undefined,
           ticketUrl,
         }
       })
