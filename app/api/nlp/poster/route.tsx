@@ -1,6 +1,8 @@
 import { ImageResponse } from 'next/og'
 import { NextRequest } from 'next/server'
 import { getLiveShows } from '@/lib/nlp-scrape'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
@@ -166,14 +168,10 @@ export async function GET(req: NextRequest) {
 
   const weekLabel = `${MONTHS[monday.getUTCMonth()]} ${monday.getUTCDate()} – ${MONTHS[weekDays[6].getUTCMonth()]} ${weekDays[6].getUTCDate()}, ${monday.getUTCFullYear()}`
 
-  const base = process.env.NEXTAUTH_URL || 'https://www.nd-ex.com'
   let logoData: string | null = null
   try {
-    const logoRes = await fetch(`${base}/nlp-logo.png`, { signal: AbortSignal.timeout(3000) })
-    if (logoRes.ok) {
-      const buf = await logoRes.arrayBuffer()
-      logoData = `data:image/png;base64,${Buffer.from(buf).toString('base64')}`
-    }
+    const logoBuf = readFileSync(join(process.cwd(), 'public', 'nlp-logo.png'))
+    logoData = `data:image/png;base64,${logoBuf.toString('base64')}`
   } catch { /* text fallback */ }
 
   const W = 1080
